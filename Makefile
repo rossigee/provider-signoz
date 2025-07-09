@@ -36,6 +36,19 @@ XPKGS = provider-signoz
 # we ensure image is present in daemon.
 xpkg.build.provider-signoz: do.build.images
 
+# Override xpkg.build to use modern Crossplane CLI syntax
+xpkg.build.provider-signoz:
+	@$(INFO) Building package provider-signoz-$(VERSION).xpkg for $(PLATFORM)
+	@mkdir -p $(OUTPUT_DIR)/xpkg/$(PLATFORM)
+	@controller_arg=$$(grep -E '^kind:\s+Provider\s*$$' $(XPKG_DIR)/crossplane.yaml > /dev/null && echo "--embed-runtime-image $(BUILD_REGISTRY)/provider-signoz-$(ARCH)"); \
+	$(CROSSPLANE_CLI) xpkg build \
+		$${controller_arg} \
+		--package-root $(XPKG_DIR) \
+		--examples-root $(XPKG_EXAMPLES_DIR) \
+		--ignore $(XPKG_IGNORE) \
+		--package-file $(XPKG_OUTPUT_DIR)/$(PLATFORM)/provider-signoz-$(VERSION).xpkg || $(FAIL)
+	@$(OK) Built package provider-signoz-$(VERSION).xpkg for $(PLATFORM)
+
 # Setup Local Dev
 -include build/makelib/local.mk
 
