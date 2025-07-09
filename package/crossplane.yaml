@@ -17,4 +17,4 @@ metadata:
     maintainer: "The Crossplane Authors"
 spec:
   controller:
-    image: ghcr.io/crossplane-contrib/provider-signoz-controller:VERSION
+    image: harbor.golder.lan/library/provider-signoz-controller:v0.1.3
