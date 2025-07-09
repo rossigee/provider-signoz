@@ -94,7 +94,7 @@ func TestClient_CreateDashboard(t *testing.T) {
 		}
 		
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -150,7 +150,7 @@ func TestClient_GetDashboard(t *testing.T) {
 		}
 		
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -223,7 +223,7 @@ func TestClient_CreateRule(t *testing.T) {
 		}
 		
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -280,7 +280,7 @@ func TestClient_CreateChannel(t *testing.T) {
 		}
 		
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	defer server.Close()
 
@@ -314,7 +314,7 @@ func TestClient_CreateChannel(t *testing.T) {
 func TestClient_APIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error": "Invalid request"}`))
+		_, _ = w.Write([]byte(`{"error": "Invalid request"}`))
 	}))
 	defer server.Close()
 
