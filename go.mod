@@ -1,6 +1,6 @@
 module github.com/crossplane-contrib/provider-signoz
 
-go 1.21
+go 1.24
 
 require (
 	github.com/crossplane/crossplane-runtime v1.14.0
@@ -23,7 +23,6 @@ require (
 	github.com/dave/jennifer v1.4.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
-	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect

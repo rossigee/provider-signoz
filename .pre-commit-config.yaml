@@ -1,0 +1,44 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-json
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: no-commit-to-branch
+        args: ['--branch', 'main']
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.55.2
+    hooks:
+      - id: golangci-lint
+        args: ['--timeout=10m']
+
+  - repo: local
+    hooks:
+      - id: check-binaries
+        name: Check for binary files
+        entry: bash -c 'find . -type f -executable -exec file {} \; | grep -E "ELF|executable|binary" | grep -v "\.git" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+      
+      - id: go-mod-tidy
+        name: Go mod tidy
+        entry: go mod tidy
+        language: system
+        files: go\.(mod|sum)$
+        pass_filenames: false
+
+      - id: go-generate
+        name: Go generate
+        entry: make generate
+        language: system
+        files: '\.go$'
+        pass_filenames: false

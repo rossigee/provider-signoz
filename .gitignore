@@ -40,8 +40,10 @@ Thumbs.db
 # Crossplane build artifacts
 .work/
 .cache/
-cluster/
+_output/
 output/
+/provider
+/provider-signoz
 
 # Temporary files
 *.tmp
