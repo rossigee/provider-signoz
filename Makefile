@@ -37,7 +37,7 @@ XPKGS = provider-signoz
 xpkg.build.provider-signoz: do.build.images
 
 # Override xpkg.build to use modern Crossplane CLI syntax
-xpkg.build.provider-signoz:
+xpkg.build.provider-signoz: $(CROSSPLANE_CLI)
 	@$(INFO) Building package provider-signoz-$(VERSION).xpkg for $(PLATFORM)
 	@mkdir -p $(OUTPUT_DIR)/xpkg/$(PLATFORM)
 	@controller_arg=$$(grep -E '^kind:\s+Provider\s*$$' $(XPKG_DIR)/crossplane.yaml > /dev/null && echo "--embed-runtime-image $(BUILD_REGISTRY)/provider-signoz-$(ARCH)"); \
