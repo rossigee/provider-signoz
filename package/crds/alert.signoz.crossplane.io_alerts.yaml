@@ -1,0 +1,690 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.13.0
+  name: alerts.alert.signoz.crossplane.io
+spec:
+  group: alert.signoz.crossplane.io
+  names:
+    categories:
+    - crossplane
+    - managed
+    - signoz
+    kind: Alert
+    listKind: AlertList
+    plural: alerts
+    singular: alert
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: READY
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Synced')].status
+      name: SYNCED
+      type: string
+    - jsonPath: .status.atProvider.state
+      name: STATE
+      type: string
+    - jsonPath: .spec.forProvider.severity
+      name: SEVERITY
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Alert is the Schema for the Alerts API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: AlertSpec defines the desired state of Alert
+            properties:
+              deletionPolicy:
+                default: Delete
+                description: 'DeletionPolicy specifies what will happen to the underlying
+                  external when this managed resource is deleted - either "Delete"
+                  or "Orphan" the external resource. This field is planned to be deprecated
+                  in favor of the ManagementPolicies field in a future release. Currently,
+                  both could be set independently and non-default values would be
+                  honored if the feature flag is enabled. See the design doc for more
+                  information: https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223'
+                enum:
+                - Orphan
+                - Delete
+                type: string
+              forProvider:
+                description: AlertParameters are the configurable fields of an Alert.
+                properties:
+                  alertName:
+                    description: AlertName is the name of the alert rule.
+                    type: string
+                  alertType:
+                    description: AlertType defines the type of alert.
+                    enum:
+                    - METRIC_BASED_ALERT
+                    - LOG_BASED_ALERT
+                    - TRACE_BASED_ALERT
+                    - ANOMALY_BASED_ALERT
+                    type: string
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations are key-value pairs that provide additional
+                      information.
+                    type: object
+                  channelIdsRef:
+                    description: ChannelIDsRef are references to NotificationChannel
+                      resources.
+                    items:
+                      description: A Reference to a named object.
+                      properties:
+                        name:
+                          description: Name of the referenced object.
+                          type: string
+                        policy:
+                          description: Policies for referencing.
+                          properties:
+                            resolution:
+                              default: Required
+                              description: Resolution specifies whether resolution
+                                of this reference is required. The default is 'Required',
+                                which means the reconcile will fail if the reference
+                                cannot be resolved. 'Optional' means this reference
+                                will be a no-op if it cannot be resolved.
+                              enum:
+                              - Required
+                              - Optional
+                              type: string
+                            resolve:
+                              description: Resolve specifies when this reference should
+                                be resolved. The default is 'IfNotPresent', which
+                                will attempt to resolve the reference only when the
+                                corresponding field is not present. Use 'Always' to
+                                resolve the reference on every reconcile.
+                              enum:
+                              - Always
+                              - IfNotPresent
+                              type: string
+                          type: object
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  channelIdsSelector:
+                    description: ChannelIDsSelector selects NotificationChannels by
+                      labels.
+                    properties:
+                      matchControllerRef:
+                        description: MatchControllerRef ensures an object with the
+                          same controller reference as the selecting object is selected.
+                        type: boolean
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: MatchLabels ensures an object with matching labels
+                          is selected.
+                        type: object
+                      policy:
+                        description: Policies for selection.
+                        properties:
+                          resolution:
+                            default: Required
+                            description: Resolution specifies whether resolution of
+                              this reference is required. The default is 'Required',
+                              which means the reconcile will fail if the reference
+                              cannot be resolved. 'Optional' means this reference
+                              will be a no-op if it cannot be resolved.
+                            enum:
+                            - Required
+                            - Optional
+                            type: string
+                          resolve:
+                            description: Resolve specifies when this reference should
+                              be resolved. The default is 'IfNotPresent', which will
+                              attempt to resolve the reference only when the corresponding
+                              field is not present. Use 'Always' to resolve the reference
+                              on every reconcile.
+                            enum:
+                            - Always
+                            - IfNotPresent
+                            type: string
+                        type: object
+                    type: object
+                  condition:
+                    description: Condition defines the alert condition.
+                    properties:
+                      compareOp:
+                        description: CompareOp is the comparison operator for the
+                          condition.
+                        enum:
+                        - '>'
+                        - '>='
+                        - <
+                        - <=
+                        - ==
+                        - '!='
+                        type: string
+                      compositeQuery:
+                        description: CompositeQuery defines the query for the alert
+                          condition.
+                        properties:
+                          builder:
+                            description: Builder contains query builder configuration.
+                            properties:
+                              aggregateAttribute:
+                                description: AggregateAttribute defines what to aggregate
+                                  on.
+                                properties:
+                                  dataType:
+                                    description: DataType is the data type of the
+                                      attribute.
+                                    type: string
+                                  key:
+                                    description: Key is the attribute key.
+                                    type: string
+                                  type:
+                                    description: Type is the attribute type.
+                                    type: string
+                                required:
+                                - key
+                                - type
+                                type: object
+                              aggregateOperator:
+                                description: AggregateOperator defines the aggregation
+                                  function.
+                                type: string
+                              dataSource:
+                                description: DataSource defines the data source (metrics,
+                                  logs, traces).
+                                enum:
+                                - metrics
+                                - logs
+                                - traces
+                                type: string
+                              filters:
+                                description: Filters define the query filters.
+                                properties:
+                                  items:
+                                    description: Items are the filter conditions.
+                                    items:
+                                      description: FilterItem defines a single filter
+                                        condition.
+                                      properties:
+                                        key:
+                                          description: Key is the attribute to filter
+                                            on.
+                                          properties:
+                                            dataType:
+                                              description: DataType is the data type
+                                                of the attribute.
+                                              type: string
+                                            key:
+                                              description: Key is the attribute key.
+                                              type: string
+                                            type:
+                                              description: Type is the attribute type.
+                                              type: string
+                                          required:
+                                          - key
+                                          - type
+                                          type: object
+                                        op:
+                                          description: Op is the comparison operator.
+                                          type: string
+                                        value:
+                                          description: Value is the filter value.
+                                          type: string
+                                          x-kubernetes-preserve-unknown-fields: true
+                                      required:
+                                      - key
+                                      - op
+                                      type: object
+                                    type: array
+                                  operator:
+                                    description: Operator is the logical operator
+                                      (AND, OR).
+                                    enum:
+                                    - AND
+                                    - OR
+                                    type: string
+                                required:
+                                - items
+                                - operator
+                                type: object
+                              groupBy:
+                                description: GroupBy defines the grouping attributes.
+                                items:
+                                  description: KeyAttribute defines an attribute for
+                                    grouping or aggregation.
+                                  properties:
+                                    dataType:
+                                      description: DataType is the data type of the
+                                        attribute.
+                                      type: string
+                                    key:
+                                      description: Key is the attribute key.
+                                      type: string
+                                    type:
+                                      description: Type is the attribute type.
+                                      type: string
+                                  required:
+                                  - key
+                                  - type
+                                  type: object
+                                type: array
+                              having:
+                                description: Having defines post-aggregation filters.
+                                items:
+                                  description: Having defines a post-aggregation filter.
+                                  properties:
+                                    columnName:
+                                      description: ColumnName is the column to filter
+                                        on.
+                                      type: string
+                                    op:
+                                      description: Op is the comparison operator.
+                                      type: string
+                                    value:
+                                      description: Value is the filter value.
+                                      type: string
+                                      x-kubernetes-preserve-unknown-fields: true
+                                  required:
+                                  - columnName
+                                  - op
+                                  type: object
+                                type: array
+                              limit:
+                                description: Limit defines the result limit.
+                                type: integer
+                              offset:
+                                description: Offset defines the result offset.
+                                type: integer
+                              orderBy:
+                                description: OrderBy defines the sort order.
+                                items:
+                                  description: OrderBy defines sort order.
+                                  properties:
+                                    columnName:
+                                      description: ColumnName is the column to sort
+                                        by.
+                                      type: string
+                                    order:
+                                      description: Order is the sort direction (ASC,
+                                        DESC).
+                                      enum:
+                                      - ASC
+                                      - DESC
+                                      type: string
+                                  required:
+                                  - columnName
+                                  - order
+                                  type: object
+                                type: array
+                            required:
+                            - dataSource
+                            type: object
+                          clickHouse:
+                            description: ClickHouse contains ClickHouse SQL queries.
+                            items:
+                              description: AlertClickHouseQuery defines a ClickHouse
+                                SQL query for alerts.
+                              properties:
+                                disabled:
+                                  description: Disabled indicates if this query is
+                                    disabled.
+                                  type: boolean
+                                legend:
+                                  description: Legend is an optional legend format.
+                                  type: string
+                                name:
+                                  description: Name is the query identifier (e.g.,
+                                    "A", "B").
+                                  type: string
+                                query:
+                                  description: Query is the SQL query string.
+                                  type: string
+                              required:
+                              - query
+                              type: object
+                            type: array
+                          expression:
+                            description: Expression combines multiple queries with
+                              mathematical operations.
+                            type: string
+                          promQL:
+                            description: PromQL contains PromQL queries.
+                            items:
+                              description: AlertPromQuery defines a PromQL query for
+                                alerts.
+                              properties:
+                                disabled:
+                                  description: Disabled indicates if this query is
+                                    disabled.
+                                  type: boolean
+                                legend:
+                                  description: Legend is an optional legend format.
+                                  type: string
+                                name:
+                                  description: Name is the query identifier (e.g.,
+                                    "A", "B").
+                                  type: string
+                                query:
+                                  description: Query is the PromQL query string.
+                                  type: string
+                              required:
+                              - query
+                              type: object
+                            type: array
+                          queryType:
+                            description: QueryType defines the type of query (1=PromQL,
+                              2=ClickHouse, 3=Builder).
+                            enum:
+                            - 1
+                            - 2
+                            - 3
+                            type: integer
+                        required:
+                        - queryType
+                        type: object
+                      matchType:
+                        description: MatchType defines how to match the condition
+                          (1=at least once, 2=all the time).
+                        enum:
+                        - 1
+                        - 2
+                        type: integer
+                      target:
+                        description: Target is the threshold value for comparison.
+                        type: number
+                    required:
+                    - compositeQuery
+                    type: object
+                  disabled:
+                    description: Disabled indicates if the alert is disabled.
+                    type: boolean
+                  evalWindow:
+                    description: 'EvalWindow is the time window for evaluating the
+                      alert. Format: "5m", "1h", etc.'
+                    type: string
+                  frequency:
+                    description: 'Frequency is how often to evaluate the alert. Format:
+                      "1m", "5m", etc.'
+                    type: string
+                  labels:
+                    additionalProperties:
+                      type: string
+                    description: Labels are key-value pairs associated with the alert.
+                    type: object
+                  preferredChannels:
+                    description: PreferredChannels is a list of notification channel
+                      names to send alerts to.
+                    items:
+                      type: string
+                    type: array
+                  severity:
+                    description: Severity of the alert.
+                    enum:
+                    - info
+                    - warning
+                    - error
+                    - critical
+                    type: string
+                required:
+                - alertName
+                - alertType
+                - condition
+                - evalWindow
+                - frequency
+                - severity
+                type: object
+              managementPolicies:
+                default:
+                - '*'
+                description: 'THIS IS A BETA FIELD. It is on by default but can be
+                  opted out through a Crossplane feature flag. ManagementPolicies
+                  specify the array of actions Crossplane is allowed to take on the
+                  managed and external resources. This field is planned to replace
+                  the DeletionPolicy field in a future release. Currently, both could
+                  be set independently and non-default values would be honored if
+                  the feature flag is enabled. If both are custom, the DeletionPolicy
+                  field will be ignored. See the design doc for more information:
+                  https://github.com/crossplane/crossplane/blob/499895a25d1a1a0ba1604944ef98ac7a1a71f197/design/design-doc-observe-only-resources.md?plain=1#L223
+                  and this one: https://github.com/crossplane/crossplane/blob/444267e84783136daa93568b364a5f01228cacbe/design/one-pager-ignore-changes.md'
+                items:
+                  description: A ManagementAction represents an action that the Crossplane
+                    controllers can take on an external resource.
+                  enum:
+                  - Observe
+                  - Create
+                  - Update
+                  - Delete
+                  - LateInitialize
+                  - '*'
+                  type: string
+                type: array
+              providerConfigRef:
+                default:
+                  name: default
+                description: ProviderConfigReference specifies how the provider that
+                  will be used to create, observe, update, and delete this managed
+                  resource should be configured.
+                properties:
+                  name:
+                    description: Name of the referenced object.
+                    type: string
+                  policy:
+                    description: Policies for referencing.
+                    properties:
+                      resolution:
+                        default: Required
+                        description: Resolution specifies whether resolution of this
+                          reference is required. The default is 'Required', which
+                          means the reconcile will fail if the reference cannot be
+                          resolved. 'Optional' means this reference will be a no-op
+                          if it cannot be resolved.
+                        enum:
+                        - Required
+                        - Optional
+                        type: string
+                      resolve:
+                        description: Resolve specifies when this reference should
+                          be resolved. The default is 'IfNotPresent', which will attempt
+                          to resolve the reference only when the corresponding field
+                          is not present. Use 'Always' to resolve the reference on
+                          every reconcile.
+                        enum:
+                        - Always
+                        - IfNotPresent
+                        type: string
+                    type: object
+                required:
+                - name
+                type: object
+              publishConnectionDetailsTo:
+                description: PublishConnectionDetailsTo specifies the connection secret
+                  config which contains a name, metadata and a reference to secret
+                  store config to which any connection details for this managed resource
+                  should be written. Connection details frequently include the endpoint,
+                  username, and password required to connect to the managed resource.
+                properties:
+                  configRef:
+                    default:
+                      name: default
+                    description: SecretStoreConfigRef specifies which secret store
+                      config should be used for this ConnectionSecret.
+                    properties:
+                      name:
+                        description: Name of the referenced object.
+                        type: string
+                      policy:
+                        description: Policies for referencing.
+                        properties:
+                          resolution:
+                            default: Required
+                            description: Resolution specifies whether resolution of
+                              this reference is required. The default is 'Required',
+                              which means the reconcile will fail if the reference
+                              cannot be resolved. 'Optional' means this reference
+                              will be a no-op if it cannot be resolved.
+                            enum:
+                            - Required
+                            - Optional
+                            type: string
+                          resolve:
+                            description: Resolve specifies when this reference should
+                              be resolved. The default is 'IfNotPresent', which will
+                              attempt to resolve the reference only when the corresponding
+                              field is not present. Use 'Always' to resolve the reference
+                              on every reconcile.
+                            enum:
+                            - Always
+                            - IfNotPresent
+                            type: string
+                        type: object
+                    required:
+                    - name
+                    type: object
+                  metadata:
+                    description: Metadata is the metadata for connection secret.
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        description: Annotations are the annotations to be added to
+                          connection secret. - For Kubernetes secrets, this will be
+                          used as "metadata.annotations". - It is up to Secret Store
+                          implementation for others store types.
+                        type: object
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: Labels are the labels/tags to be added to connection
+                          secret. - For Kubernetes secrets, this will be used as "metadata.labels".
+                          - It is up to Secret Store implementation for others store
+                          types.
+                        type: object
+                      type:
+                        description: Type is the SecretType for the connection secret.
+                          - Only valid for Kubernetes Secret Stores.
+                        type: string
+                    type: object
+                  name:
+                    description: Name is the name of the connection secret.
+                    type: string
+                required:
+                - name
+                type: object
+              writeConnectionSecretToRef:
+                description: WriteConnectionSecretToReference specifies the namespace
+                  and name of a Secret to which any connection details for this managed
+                  resource should be written. Connection details frequently include
+                  the endpoint, username, and password required to connect to the
+                  managed resource. This field is planned to be replaced in a future
+                  release in favor of PublishConnectionDetailsTo. Currently, both
+                  could be set independently and connection details would be published
+                  to both without affecting each other.
+                properties:
+                  name:
+                    description: Name of the secret.
+                    type: string
+                  namespace:
+                    description: Namespace of the secret.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+            required:
+            - forProvider
+            type: object
+          status:
+            description: AlertStatus represents the observed state of an Alert.
+            properties:
+              atProvider:
+                description: AlertObservation are the observable fields of an Alert.
+                properties:
+                  createdAt:
+                    description: CreatedAt is when the alert was created.
+                    format: date-time
+                    type: string
+                  id:
+                    description: ID is the unique identifier of the alert in SigNoz.
+                    type: string
+                  lastFiredTime:
+                    description: LastFiredTime is when the alert last fired.
+                    format: date-time
+                    type: string
+                  resolvedChannelIds:
+                    description: ResolvedChannelIDs contains the IDs of resolved notification
+                      channels.
+                    items:
+                      type: string
+                    type: array
+                  state:
+                    description: State is the current state of the alert (inactive,
+                      pending, firing, etc.).
+                    type: string
+                  updatedAt:
+                    description: UpdatedAt is when the alert was last updated.
+                    format: date-time
+                    type: string
+                type: object
+              conditions:
+                description: Conditions of the resource.
+                items:
+                  description: A Condition that may apply to a resource.
+                  properties:
+                    lastTransitionTime:
+                      description: LastTransitionTime is the last time this condition
+                        transitioned from one status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: A Message containing details about this condition's
+                        last transition from one status to another, if any.
+                      type: string
+                    reason:
+                      description: A Reason for this condition's last transition from
+                        one status to another.
+                      type: string
+                    status:
+                      description: Status of this condition; is it currently True,
+                        False, or Unknown?
+                      type: string
+                    type:
+                      description: Type of this condition. At most one of each condition
+                        type may apply to a resource at any point in time.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

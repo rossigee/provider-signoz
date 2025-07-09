@@ -1,0 +1,35 @@
+apiVersion: alert.signoz.crossplane.io/v1alpha1
+kind: Alert
+metadata:
+  name: high-error-rate
+spec:
+  forProvider:
+    alertName: "High Error Rate"
+    alertType: "METRIC_BASED_ALERT"
+    condition:
+      compositeQuery:
+        queryType: 1  # PromQL
+        promQL:
+          - query: "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) * 100"
+            name: "A"
+            legend: "Error Rate"
+        expression: "A > 5"
+      compareOp: ">"
+      target: 5.0
+      matchType: 1  # At least once
+    evalWindow: "5m"
+    frequency: "1m"
+    severity: "critical"
+    labels:
+      team: "platform"
+      service: "api"
+      environment: "production"
+    annotations:
+      summary: "High error rate detected"
+      description: "Error rate is above 5% for more than 5 minutes"
+      runbook_url: "https://wiki.company.com/runbooks/high-error-rate"
+    channelIdsRef:
+      - name: "slack-alerts"
+    disabled: false
+  providerConfigRef:
+    name: default

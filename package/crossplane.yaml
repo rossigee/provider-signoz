@@ -1,0 +1,20 @@
+apiVersion: meta.pkg.crossplane.io/v1alpha1
+kind: Provider
+metadata:
+  name: provider-signoz
+  annotations:
+    # Human readable title of the provider
+    friendly-name: "SigNoz Provider"
+    # Short description of the provider
+    description: "The SigNoz provider enables management of SigNoz observability resources through Kubernetes."
+    # Provider website
+    website: "https://github.com/crossplane-contrib/provider-signoz"
+    # Provider source repository
+    source: "https://github.com/crossplane-contrib/provider-signoz"
+    # Provider documentation
+    docs: "https://github.com/crossplane-contrib/provider-signoz"
+    # Maintainer information
+    maintainer: "The Crossplane Authors"
+spec:
+  controller:
+    image: ghcr.io/crossplane-contrib/provider-signoz-controller:VERSION

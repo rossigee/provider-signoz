@@ -1,0 +1,56 @@
+apiVersion: alert.signoz.crossplane.io/v1alpha1
+kind: Alert
+metadata:
+  name: high-latency
+spec:
+  forProvider:
+    alertName: "High Response Time"
+    alertType: "METRIC_BASED_ALERT"
+    condition:
+      compositeQuery:
+        queryType: 3  # Builder
+        builder:
+          dataSource: "traces"
+          aggregateOperator: "p95"
+          aggregateAttribute:
+            key: "duration_nano"
+            type: "float64"
+            dataType: "float64"
+          filters:
+            operator: "AND"
+            items:
+              - key:
+                  key: "service_name"
+                  type: "string"
+                op: "="
+                value: "user-service"
+              - key:
+                  key: "operation"
+                  type: "string"
+                op: "="
+                value: "GET /api/users"
+          groupBy:
+            - key: "service_name"
+              type: "string"
+        expression: "A > 500000000"  # 500ms in nanoseconds
+      compareOp: ">"
+      target: 500000000.0
+      matchType: 1  # At least once
+    evalWindow: "10m"
+    frequency: "2m"
+    severity: "warning"
+    labels:
+      team: "backend"
+      service: "user-service"
+      environment: "production"
+    annotations:
+      summary: "High response time detected for user service"
+      description: "95th percentile response time is above 500ms for user service"
+      impact: "Users experiencing slow response times"
+    channelIdsSelector:
+      matchLabels:
+        team: "backend"
+        environment: "production"
+    disabled: false
+  providerConfigRef:
+    name: default

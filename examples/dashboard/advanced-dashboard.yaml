@@ -1,0 +1,105 @@
+apiVersion: dashboard.signoz.crossplane.io/v1alpha1
+kind: Dashboard
+metadata:
+  name: advanced-metrics
+spec:
+  forProvider:
+    title: "Advanced Application Metrics"
+    description: "Comprehensive metrics with multiple query types"
+    tags:
+      - "production"
+      - "advanced"
+      - "monitoring"
+    widgets:
+      - id: "widget-1"
+        title: "Service Health"
+        description: "Combined metrics using query builder"
+        panelType: "graph"
+        query:
+          queryType: 3  # Builder
+          builder:
+            queryBuilder:
+              - name: "A"
+                metricName: "signoz_calls_total"
+                aggregateOperator: "rate"
+                groupBy: ["service_name"]
+                legend: "{{service_name}}"
+              - name: "B"
+                metricName: "signoz_db_latency_bucket"
+                aggregateOperator: "p95"
+                groupBy: ["service_name"]
+                legend: "{{service_name}} p95"
+            formulas:
+              - "A / B"
+        yAxisUnit: "short"
+        isStacked: true
+      - id: "widget-2"
+        title: "Database Queries"
+        description: "ClickHouse query for database metrics"
+        panelType: "table"
+        query:
+          queryType: 2  # ClickHouse
+          clickHouse:
+            - query: |
+                SELECT
+                  service_name,
+                  operation,
+                  avg(duration_nano) / 1000000 as avg_duration_ms,
+                  count() as total_calls
+                FROM signoz_traces.signoz_spans
+                WHERE timestamp >= toDateTime(now() - INTERVAL 1 HOUR)
+                  AND kind = 'SPAN_KIND_SERVER'
+                GROUP BY service_name, operation
+                ORDER BY avg_duration_ms DESC
+                LIMIT 10
+              name: "db_stats"
+              legend: "Database Statistics"
+        nullZeroValues: "zero"
+      - id: "widget-3"
+        title: "Service Overview"
+        description: "Key metrics summary"
+        panelType: "value"
+        query:
+          queryType: 1  # PromQL
+          promQL:
+            - query: "sum(rate(signoz_calls_total[5m]))"
+              name: "total_rps"
+              legend: "Total RPS"
+        yAxisUnit: "reqps"
+        timePreference: "LAST_15_MIN"
+    layout:
+      - i: "widget-1"
+        x: 0
+        y: 0
+        w: 16
+        h: 8
+      - i: "widget-2"
+        x: 16
+        y: 0
+        w: 8
+        h: 8
+      - i: "widget-3"
+        x: 0
+        y: 8
+        w: 24
+        h: 4
+    variables:
+      service_name:
+        type: "query"
+        description: "Service to monitor"
+        queryValue: "label_values(signoz_calls_total, service_name)"
+        multiSelect: true
+        showAllOption: true
+        selectedValue: "all"
+        sort: "alphabetical"
+      time_range:
+        type: "custom"
+        description: "Time range for queries"
+        customValue: "5m,15m,1h,6h,1d"
+        selectedValue: "15m"
+      environment:
+        type: "textbox"
+        description: "Environment filter"
+        textboxValue: "production"
+  providerConfigRef:
+    name: default

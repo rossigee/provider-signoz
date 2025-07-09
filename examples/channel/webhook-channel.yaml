@@ -1,0 +1,30 @@
+apiVersion: channel.signoz.crossplane.io/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: webhook-alerts
+  labels:
+    team: platform
+    environment: production
+spec:
+  forProvider:
+    name: "Webhook Alerts"
+    type: "webhook"
+    webhookConfigs:
+      - http_method: "POST"
+        max_alerts: 5
+        send_resolved: true
+        urlSecretRef:
+          name: webhook-secret
+          namespace: default
+          key: url
+  providerConfigRef:
+    name: default
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: webhook-secret
+  namespace: default
+type: Opaque
+stringData:
+  url: "https://your-webhook-endpoint.com/alerts"

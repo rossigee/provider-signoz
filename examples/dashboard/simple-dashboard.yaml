@@ -1,0 +1,76 @@
+apiVersion: dashboard.signoz.crossplane.io/v1alpha1
+kind: Dashboard
+metadata:
+  name: application-metrics
+spec:
+  forProvider:
+    title: "Application Metrics"
+    description: "Key metrics for our application"
+    tags:
+      - "production"
+      - "metrics"
+      - "application"
+    widgets:
+      - id: "widget-1"
+        title: "Request Rate"
+        description: "HTTP requests per second"
+        panelType: "graph"
+        query:
+          queryType: 1  # PromQL
+          promQL:
+            - query: "sum(rate(http_requests_total[5m]))"
+              name: "A"
+              legend: "Requests/sec"
+        yAxisUnit: "reqps"
+        isStacked: false
+      - id: "widget-2"
+        title: "Error Rate"
+        description: "HTTP error rate percentage"
+        panelType: "graph"
+        query:
+          queryType: 1  # PromQL
+          promQL:
+            - query: "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) * 100"
+              name: "B"
+              legend: "Error %"
+        yAxisUnit: "percent"
+        isStacked: false
+      - id: "widget-3"
+        title: "Response Time"
+        description: "95th percentile response time"
+        panelType: "graph"
+        query:
+          queryType: 1  # PromQL
+          promQL:
+            - query: "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))"
+              name: "C"
+              legend: "95th percentile"
+        yAxisUnit: "seconds"
+        isStacked: false
+    layout:
+      - i: "widget-1"
+        x: 0
+        y: 0
+        w: 12
+        h: 6
+      - i: "widget-2"
+        x: 12
+        y: 0
+        w: 12
+        h: 6
+      - i: "widget-3"
+        x: 0
+        y: 6
+        w: 24
+        h: 6
+    variables:
+      service:
+        type: "query"
+        description: "Service name"
+        queryValue: "label_values(http_requests_total, service)"
+        multiSelect: false
+        showAllOption: true
+        selectedValue: "all"
+        sort: "alphabetical"
+  providerConfigRef:
+    name: default

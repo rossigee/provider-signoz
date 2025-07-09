@@ -1,0 +1,319 @@
+# Complete SigNoz Provider Setup Example
+# This example demonstrates how to set up a complete monitoring stack with dashboards, alerts, and notifications
+
+---
+# Provider Configuration
+apiVersion: signoz.crossplane.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  endpoint: "https://your-signoz-instance.com"
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: signoz-credentials
+      key: credentials
+
+---
+# Slack Notification Channel
+apiVersion: channel.signoz.crossplane.io/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: slack-critical
+  labels:
+    team: platform
+    severity: critical
+spec:
+  forProvider:
+    name: "Critical Alerts - Slack"
+    type: "slack"
+    slackConfigs:
+      - channel: "#critical-alerts"
+        title: "🚨 Critical Alert"
+        send_resolved: true
+        webhookUrlSecretRef:
+          name: slack-webhook-secret
+          namespace: default
+          key: webhook-url
+  providerConfigRef:
+    name: default
+
+---
+# PagerDuty Notification Channel
+apiVersion: channel.signoz.crossplane.io/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: pagerduty-critical
+  labels:
+    team: platform
+    severity: critical
+spec:
+  forProvider:
+    name: "Critical Alerts - PagerDuty"
+    type: "pagerduty"
+    pagerdutyConfigs:
+      - severity: "critical"
+        send_resolved: true
+        routingKeySecretRef:
+          name: pagerduty-secret
+          namespace: default
+          key: routing-key
+  providerConfigRef:
+    name: default
+
+---
+# Webhook for Non-Critical Alerts
+apiVersion: channel.signoz.crossplane.io/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: webhook-warnings
+  labels:
+    team: platform
+    severity: warning
+spec:
+  forProvider:
+    name: "Warning Alerts - Webhook"
+    type: "webhook"
+    webhookConfigs:
+      - http_method: "POST"
+        max_alerts: 10
+        send_resolved: true
+        urlSecretRef:
+          name: webhook-secret
+          namespace: default
+          key: url
+  providerConfigRef:
+    name: default
+
+---
+# Application Performance Dashboard
+apiVersion: dashboard.signoz.crossplane.io/v1alpha1
+kind: Dashboard
+metadata:
+  name: app-performance
+spec:
+  forProvider:
+    title: "Application Performance Dashboard"
+    description: "Comprehensive view of application performance metrics"
+    tags:
+      - "production"
+      - "performance"
+      - "monitoring"
+    widgets:
+      - id: "rps-widget"
+        title: "Requests per Second"
+        description: "Total requests per second across all services"
+        panelType: "graph"
+        query:
+          queryType: 1
+          promQL:
+            - query: "sum(rate(signoz_calls_total[5m]))"
+              name: "total_rps"
+              legend: "Total RPS"
+        yAxisUnit: "reqps"
+        isStacked: false
+      - id: "error-rate-widget"
+        title: "Error Rate"
+        description: "Error rate percentage"
+        panelType: "graph"
+        query:
+          queryType: 1
+          promQL:
+            - query: "sum(rate(signoz_calls_total{status_code=~'5..'}[5m])) / sum(rate(signoz_calls_total[5m])) * 100"
+              name: "error_rate"
+              legend: "Error Rate %"
+        yAxisUnit: "percent"
+        isStacked: false
+      - id: "latency-widget"
+        title: "Response Time Distribution"
+        description: "P50, P95, P99 response times"
+        panelType: "graph"
+        query:
+          queryType: 3
+          builder:
+            queryBuilder:
+              - name: "p50"
+                metricName: "signoz_latency_bucket"
+                aggregateOperator: "p50"
+                groupBy: ["service_name"]
+                legend: "{{service_name}} P50"
+              - name: "p95"
+                metricName: "signoz_latency_bucket"
+                aggregateOperator: "p95"
+                groupBy: ["service_name"]
+                legend: "{{service_name}} P95"
+              - name: "p99"
+                metricName: "signoz_latency_bucket"
+                aggregateOperator: "p99"
+                groupBy: ["service_name"]
+                legend: "{{service_name}} P99"
+        yAxisUnit: "ms"
+        isStacked: false
+    layout:
+      - i: "rps-widget"
+        x: 0
+        y: 0
+        w: 8
+        h: 6
+      - i: "error-rate-widget"
+        x: 8
+        y: 0
+        w: 8
+        h: 6
+      - i: "latency-widget"
+        x: 16
+        y: 0
+        w: 8
+        h: 6
+    variables:
+      service:
+        type: "query"
+        description: "Service name"
+        queryValue: "label_values(signoz_calls_total, service_name)"
+        multiSelect: true
+        showAllOption: true
+        selectedValue: "all"
+        sort: "alphabetical"
+      environment:
+        type: "custom"
+        description: "Environment"
+        customValue: "production,staging,development"
+        selectedValue: "production"
+  providerConfigRef:
+    name: default
+
+---
+# Critical Error Rate Alert
+apiVersion: alert.signoz.crossplane.io/v1alpha1
+kind: Alert
+metadata:
+  name: critical-error-rate
+spec:
+  forProvider:
+    alertName: "Critical Error Rate"
+    alertType: "METRIC_BASED_ALERT"
+    condition:
+      compositeQuery:
+        queryType: 1
+        promQL:
+          - query: "sum(rate(signoz_calls_total{status_code=~'5..'}[5m])) / sum(rate(signoz_calls_total[5m])) * 100"
+            name: "error_rate"
+            legend: "Error Rate"
+        expression: "error_rate > 10"
+      compareOp: ">"
+      target: 10.0
+      matchType: 1
+    evalWindow: "5m"
+    frequency: "1m"
+    severity: "critical"
+    labels:
+      team: "platform"
+      alert_type: "error_rate"
+      environment: "production"
+    annotations:
+      summary: "Critical error rate detected"
+      description: "Error rate is above 10% for more than 5 minutes"
+      runbook_url: "https://wiki.company.com/runbooks/critical-error-rate"
+    channelIdsSelector:
+      matchLabels:
+        severity: "critical"
+    disabled: false
+  providerConfigRef:
+    name: default
+
+---
+# High Latency Warning Alert
+apiVersion: alert.signoz.crossplane.io/v1alpha1
+kind: Alert
+metadata:
+  name: high-latency-warning
+spec:
+  forProvider:
+    alertName: "High Latency Warning"
+    alertType: "METRIC_BASED_ALERT"
+    condition:
+      compositeQuery:
+        queryType: 3
+        builder:
+          dataSource: "traces"
+          aggregateOperator: "p95"
+          aggregateAttribute:
+            key: "duration_nano"
+            type: "float64"
+          filters:
+            operator: "AND"
+            items:
+              - key:
+                  key: "service_name"
+                  type: "string"
+                op: "IN"
+                value: ["user-service", "payment-service", "order-service"]
+          groupBy:
+            - key: "service_name"
+              type: "string"
+        expression: "A > 1000000000"  # 1 second in nanoseconds
+      compareOp: ">"
+      target: 1000000000.0
+      matchType: 1
+    evalWindow: "10m"
+    frequency: "2m"
+    severity: "warning"
+    labels:
+      team: "backend"
+      alert_type: "latency"
+      environment: "production"
+    annotations:
+      summary: "High latency detected"
+      description: "95th percentile latency is above 1 second for critical services"
+      impact: "Users may experience slow response times"
+    channelIdsSelector:
+      matchLabels:
+        severity: "warning"
+    disabled: false
+  providerConfigRef:
+    name: default
+
+---
+# Database Connection Alert
+apiVersion: alert.signoz.crossplane.io/v1alpha1
+kind: Alert
+metadata:
+  name: database-connection-errors
+spec:
+  forProvider:
+    alertName: "Database Connection Errors"
+    alertType: "LOG_BASED_ALERT"
+    condition:
+      compositeQuery:
+        queryType: 2
+        clickHouse:
+          - query: |
+              SELECT count() as error_count
+              FROM signoz_logs.logs
+              WHERE timestamp >= toDateTime(now() - INTERVAL 5 MINUTE)
+                AND severity_text IN ('ERROR', 'FATAL')
+                AND body LIKE '%database%connection%'
+            name: "db_errors"
+            legend: "Database Errors"
+        expression: "db_errors > 5"
+      compareOp: ">"
+      target: 5.0
+      matchType: 1
+    evalWindow: "5m"
+    frequency: "1m"
+    severity: "error"
+    labels:
+      team: "database"
+      alert_type: "logs"
+      environment: "production"
+    annotations:
+      summary: "Database connection errors detected"
+      description: "More than 5 database connection errors in the last 5 minutes"
+      investigation: "Check database connectivity and connection pool settings"
+    channelIdsRef:
+      - name: "slack-critical"
+    disabled: false
+  providerConfigRef:
+    name: default

@@ -1,0 +1,29 @@
+apiVersion: signoz.crossplane.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  # For SigNoz Cloud
+  # endpoint: "https://api.signoz.cloud"
+  
+  # For self-hosted instances
+  endpoint: "https://your-signoz-instance.com"
+  
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: signoz-credentials
+      key: credentials
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: signoz-credentials
+  namespace: crossplane-system
+type: Opaque
+stringData:
+  credentials: |
+    {
+      "apiKey": "your-api-key-here"
+    }

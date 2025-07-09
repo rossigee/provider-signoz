@@ -1,0 +1,41 @@
+apiVersion: alert.signoz.crossplane.io/v1alpha1
+kind: Alert
+metadata:
+  name: error-logs
+spec:
+  forProvider:
+    alertName: "High Error Log Volume"
+    alertType: "LOG_BASED_ALERT"
+    condition:
+      compositeQuery:
+        queryType: 2  # ClickHouse
+        clickHouse:
+          - query: |
+              SELECT count() as error_count
+              FROM signoz_logs.logs
+              WHERE timestamp >= toDateTime(now() - INTERVAL 5 MINUTE)
+                AND severity_text = 'ERROR'
+                AND attributes_string['service.name'] = 'payment-service'
+            name: "error_count"
+            legend: "Error Count"
+        expression: "error_count > 100"
+      compareOp: ">"
+      target: 100.0
+      matchType: 1  # At least once
+    evalWindow: "5m"
+    frequency: "1m"
+    severity: "error"
+    labels:
+      team: "payments"
+      service: "payment-service"
+      environment: "production"
+      alert_type: "logs"
+    annotations:
+      summary: "High volume of error logs detected"
+      description: "Payment service is generating more than 100 error logs per 5 minutes"
+      investigation: "Check payment service logs and recent deployments"
+    preferredChannels:
+      - "pagerduty-alerts"
+    disabled: false
+  providerConfigRef:
+    name: default

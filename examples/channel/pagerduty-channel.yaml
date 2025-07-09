@@ -1,0 +1,29 @@
+apiVersion: channel.signoz.crossplane.io/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: pagerduty-alerts
+  labels:
+    team: platform
+    environment: production
+spec:
+  forProvider:
+    name: "PagerDuty Alerts"
+    type: "pagerduty"
+    pagerdutyConfigs:
+      - severity: "critical"
+        send_resolved: true
+        routingKeySecretRef:
+          name: pagerduty-secret
+          namespace: default
+          key: routing-key
+  providerConfigRef:
+    name: default
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pagerduty-secret
+  namespace: default
+type: Opaque
+stringData:
+  routing-key: "your-pagerduty-routing-key"

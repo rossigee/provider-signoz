@@ -1,0 +1,30 @@
+apiVersion: channel.signoz.crossplane.io/v1alpha1
+kind: NotificationChannel
+metadata:
+  name: slack-alerts
+  labels:
+    team: platform
+    environment: production
+spec:
+  forProvider:
+    name: "Slack Alerts"
+    type: "slack"
+    slackConfigs:
+      - channel: "#alerts"
+        title: "SigNoz Alert"
+        send_resolved: true
+        webhookUrlSecretRef:
+          name: slack-webhook-secret
+          namespace: default
+          key: webhook-url
+  providerConfigRef:
+    name: default
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-webhook-secret
+  namespace: default
+type: Opaque
+stringData:
+  webhook-url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
