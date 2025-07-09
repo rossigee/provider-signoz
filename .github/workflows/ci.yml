@@ -7,8 +7,8 @@ on:
     branches: [ master ]
 
 env:
-  GO_VERSION: '1.24'
-  GOLANGCI_VERSION: 'v1.55'
+  GO_VERSION: '1.23'
+  GOLANGCI_VERSION: 'v1.61'
 
 jobs:
   detect-noop:
@@ -172,7 +172,7 @@ jobs:
           make xpkg.build.provider-signoz
 
       - name: Upload Package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: package
           path: _output/xpkg/*.xpkg
