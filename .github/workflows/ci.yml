@@ -178,6 +178,9 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [lint, check-diff, unit-tests, build]
     if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout
