@@ -211,4 +211,4 @@ jobs:
       - name: Build and Push
         run: |
           # Push to GitHub Container Registry
-          make publish REGISTRY_ORGS="ghcr.io/${{ github.repository_owner }}"
+          make publish REGISTRY_ORGS="ghcr.io/${{ github.actor }}"
