@@ -9,6 +9,8 @@ PLATFORMS ?= linux_amd64 linux_arm64
 -include build/makelib/output.mk
 
 # Setup Go
+# Override golangci-lint version for modern Go support
+GOLANGCILINT_VERSION ?= 2.3.1
 NPROCS ?= 1
 GO_TEST_PARALLEL := $(shell echo $$(( $(NPROCS) / 2 )))
 GO_STATIC_PACKAGES = $(GO_PROJECT)/cmd/provider
@@ -24,30 +26,20 @@ GO111MODULE = on
 IMAGES = provider-signoz
 -include build/makelib/imagelight.mk
 
-# Setup XPKG
-XPKG_REG_ORGS ?= xpkg.upbound.io/crossplane-contrib
-# NOTE(hasheddan): skip promoting on xpkg.upbound.io as channel tags are
-# inferred.
-XPKG_REG_ORGS_NO_PROMOTE ?= xpkg.upbound.io/crossplane-contrib
+# Setup XPKG - Standardized registry configuration
+# Primary registry: GitHub Container Registry under rossigee
+XPKG_REG_ORGS ?= ghcr.io/rossigee
+XPKG_REG_ORGS_NO_PROMOTE ?= ghcr.io/rossigee
+
+# Optional registries (can be enabled via environment variables)
+# To enable Harbor: export ENABLE_HARBOR_PUBLISH=true make publish XPKG_REG_ORGS=harbor.golder.lan/library
+# To enable Upbound: export ENABLE_UPBOUND_PUBLISH=true make publish XPKG_REG_ORGS=xpkg.upbound.io/crossplane-contrib
 XPKGS = provider-signoz
 -include build/makelib/xpkg.mk
 
-# NOTE(hasheddan): we force image building to happen prior to xpkg build so that
-# we ensure image is present in daemon.
+# NOTE: we force image building to happen prior to xpkg build so that we ensure
+# image is present in daemon.
 xpkg.build.provider-signoz: do.build.images
-
-# Override xpkg.build to use modern Crossplane CLI syntax
-xpkg.build.provider-signoz: $(CROSSPLANE_CLI)
-	@$(INFO) Building package provider-signoz-$(VERSION).xpkg for $(PLATFORM)
-	@mkdir -p $(OUTPUT_DIR)/xpkg/$(PLATFORM)
-	@controller_arg=$$(grep -E '^kind:\s+Provider\s*$$' $(XPKG_DIR)/crossplane.yaml > /dev/null && echo "--embed-runtime-image $(BUILD_REGISTRY)/provider-signoz-$(ARCH)"); \
-	$(CROSSPLANE_CLI) xpkg build \
-		$${controller_arg} \
-		--package-root $(XPKG_DIR) \
-		--examples-root $(XPKG_EXAMPLES_DIR) \
-		--ignore $(XPKG_IGNORE) \
-		--package-file $(XPKG_OUTPUT_DIR)/$(PLATFORM)/provider-signoz-$(VERSION).xpkg || $(FAIL)
-	@$(OK) Built package provider-signoz-$(VERSION).xpkg for $(PLATFORM)
 
 # Setup Local Dev
 -include build/makelib/local.mk

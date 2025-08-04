@@ -2,17 +2,34 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches: 
+      - master
+      - release-*
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
+      - release-*
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  actions: read
 
 env:
-  GO_VERSION: '1.23'
-  GOLANGCI_VERSION: 'v1.61'
+  GO_VERSION: '1.24.5'
+  GOLANGCI_VERSION: 'latest'
+  GOLANGCILINT_VERSION: '2.3.1'
+  DOCKER_BUILDX_VERSION: 'v0.11.2'
+  # Registry configuration
+  PRIMARY_REGISTRY: ghcr.io/rossigee
+  ENABLE_HARBOR_PUBLISH: false
+  ENABLE_UPBOUND_PUBLISH: false
 
 jobs:
   detect-noop:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       noop: ${{ steps.noop.outputs.should_skip }}
     steps:
@@ -25,7 +42,7 @@ jobs:
           do_not_skip: '["workflow_dispatch", "schedule", "push"]'
 
   lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: detect-noop
     if: needs.detect-noop.outputs.noop != 'true'
 
@@ -36,31 +53,18 @@ jobs:
           submodules: true
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - name: Cache Go Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
 
       - name: Vendor Dependencies
         run: go mod vendor
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v3
-        with:
-          version: ${{ env.GOLANGCI_VERSION }}
-          args: --timeout=10m
+        run: make lint
 
   check-diff:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: detect-noop
     if: needs.detect-noop.outputs.noop != 'true'
 
@@ -71,19 +75,9 @@ jobs:
           submodules: true
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - name: Cache Go Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
 
       - name: Vendor Dependencies
         run: go mod vendor
@@ -94,7 +88,7 @@ jobs:
           git diff --exit-code
 
   unit-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: detect-noop
     if: needs.detect-noop.outputs.noop != 'true'
 
@@ -106,19 +100,9 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - name: Cache Go Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
 
       - name: Vendor Dependencies
         run: go mod vendor
@@ -128,16 +112,19 @@ jobs:
           make test
 
       - name: Upload Coverage Reports
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          file: ./cover.out
+          file: ./coverage.out
           verbose: true
 
-  build:
-    runs-on: ubuntu-22.04
+  security-scan:
+    runs-on: ubuntu-24.04
     needs: detect-noop
     if: needs.detect-noop.outputs.noop != 'true'
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout
@@ -146,41 +133,47 @@ jobs:
           submodules: true
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-
-      - name: Cache Go Dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
 
       - name: Vendor Dependencies
         run: go mod vendor
 
-      - name: Build Binary and Package
+      - name: Run Go Vulnerability Check
         run: |
-          make build
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
-      - name: Upload Package
-        uses: actions/upload-artifact@v4
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
         with:
-          name: package
-          path: _output/xpkg/
-          if-no-files-found: error
+          args: '-no-fail -fmt sarif -out gosec-results.sarif ./...'
+        continue-on-error: true
+
+      - name: Fix Gosec SARIF format
+        if: always() && hashFiles('gosec-results.sarif') != ''
+        run: |
+          if [ -f gosec-results.sarif ]; then
+            jq '.runs[].results[].locations[].physicalLocation.artifactLocation.uri |= if . == null or . == "" then "." else . end' gosec-results.sarif > gosec-results-fixed.sarif
+            mv gosec-results-fixed.sarif gosec-results.sarif
+          fi
+
+      - name: Upload Gosec Results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('gosec-results.sarif') != ''
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec
 
   publish-artifacts:
-    runs-on: ubuntu-22.04
-    needs: [lint, check-diff, unit-tests, build]
+    runs-on: ubuntu-24.04
+    needs: [lint, check-diff, unit-tests, security-scan]
     if: github.ref == 'refs/heads/master'
     permissions:
       contents: read
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -190,28 +183,49 @@ jobs:
           submodules: true
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Vendor Dependencies
         run: go mod vendor
 
-      - name: Build Binaries
-        run: |
-          make build
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PAT_TOKEN }}
 
-      - name: Build and Push
+      - name: Login to Harbor Registry (Optional)
+        if: env.ENABLE_HARBOR_PUBLISH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: harbor.golder.lan
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Build and Push to Primary Registry
         run: |
-          # Push to GitHub Container Registry
-          make publish REGISTRY_ORGS="ghcr.io/${{ github.actor }}"
+          # Build and push to GitHub Container Registry (primary)
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository owner: ${{ github.repository_owner }}"
+          make publish REGISTRY_ORGS="ghcr.io/${{ github.repository_owner }}" XPKG_REG_ORGS="ghcr.io/${{ github.repository_owner }}"
+
+      - name: Build and Push to Harbor (Optional)
+        if: env.ENABLE_HARBOR_PUBLISH == 'true'
+        run: |
+          # Push to Harbor Registry
+          make publish REGISTRY_ORGS="harbor.golder.lan/library"
+
+      - name: Build and Push to Upbound Registry (Optional)
+        if: env.ENABLE_UPBOUND_PUBLISH == 'true'
+        run: |
+          # Push to Upbound Registry (only if token is available)
+          if [ -n "$UPBOUND_TOKEN" ]; then
+            make publish REGISTRY_ORGS="xpkg.upbound.io/crossplane-contrib"
+          else
+            echo "UPBOUND_TOKEN not available, skipping Upbound registry push"
+          fi
+        env:
+          UPBOUND_TOKEN: ${{ secrets.UPBOUND_TOKEN }}
