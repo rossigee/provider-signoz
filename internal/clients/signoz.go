@@ -135,7 +135,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	}
 
 	if resp.StatusCode >= 400 {
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				// Ignore close error in error path
+				_ = err
+			}
+		}()
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(bodyBytes))
 	}
@@ -145,7 +150,12 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 
 // parseResponse parses the response body into the given interface
 func parseResponse(resp *http.Response, v interface{}) error {
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			// Ignore close error
+			_ = err
+		}
+	}()
 	
 	if v == nil {
 		return nil
