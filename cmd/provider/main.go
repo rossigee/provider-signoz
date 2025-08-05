@@ -32,10 +32,10 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
 
-	"github.com/crossplane-contrib/provider-signoz/apis"
-	alertcontroller "github.com/crossplane-contrib/provider-signoz/internal/controller/alert"
-	channelcontroller "github.com/crossplane-contrib/provider-signoz/internal/controller/channel"
-	dashboardcontroller "github.com/crossplane-contrib/provider-signoz/internal/controller/dashboard"
+	"github.com/rossigee/provider-signoz/apis"
+	alertcontroller "github.com/rossigee/provider-signoz/internal/controller/alert"
+	channelcontroller "github.com/rossigee/provider-signoz/internal/controller/channel"
+	dashboardcontroller "github.com/rossigee/provider-signoz/internal/controller/dashboard"
 )
 
 func main() {

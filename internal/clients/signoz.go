@@ -31,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"github.com/crossplane-contrib/provider-signoz/apis/v1beta1"
+	"github.com/rossigee/provider-signoz/apis/v1beta1"
 )
 
 const (

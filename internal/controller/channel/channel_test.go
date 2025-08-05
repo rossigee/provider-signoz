@@ -20,7 +20,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/crossplane-contrib/provider-signoz/apis/channel/v1alpha1"
+	"github.com/rossigee/provider-signoz/apis/channel/v1alpha1"
 )
 
 func TestConvertToChannelData(t *testing.T) {

@@ -32,10 +32,10 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
-	"github.com/crossplane-contrib/provider-signoz/apis/alert/v1alpha1"
-	channelv1alpha1 "github.com/crossplane-contrib/provider-signoz/apis/channel/v1alpha1"
-	apisv1beta1 "github.com/crossplane-contrib/provider-signoz/apis/v1beta1"
-	"github.com/crossplane-contrib/provider-signoz/internal/clients"
+	"github.com/rossigee/provider-signoz/apis/alert/v1alpha1"
+	channelv1alpha1 "github.com/rossigee/provider-signoz/apis/channel/v1alpha1"
+	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
+	"github.com/rossigee/provider-signoz/internal/clients"
 )
 
 const (

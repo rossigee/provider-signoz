@@ -19,10 +19,10 @@ package apis
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 
-	alertv1alpha1 "github.com/crossplane-contrib/provider-signoz/apis/alert/v1alpha1"
-	channelv1alpha1 "github.com/crossplane-contrib/provider-signoz/apis/channel/v1alpha1"
-	dashboardv1alpha1 "github.com/crossplane-contrib/provider-signoz/apis/dashboard/v1alpha1"
-	v1beta1 "github.com/crossplane-contrib/provider-signoz/apis/v1beta1"
+	alertv1alpha1 "github.com/rossigee/provider-signoz/apis/alert/v1alpha1"
+	channelv1alpha1 "github.com/rossigee/provider-signoz/apis/channel/v1alpha1"
+	dashboardv1alpha1 "github.com/rossigee/provider-signoz/apis/dashboard/v1alpha1"
+	v1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
 )
 
 func init() {

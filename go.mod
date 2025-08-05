@@ -1,6 +1,6 @@
-module github.com/crossplane-contrib/provider-signoz
+module github.com/rossigee/provider-signoz
 
-go 1.23
+go 1.24
 
 require (
 	github.com/crossplane/crossplane-runtime v1.15.0

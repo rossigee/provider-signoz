@@ -19,8 +19,8 @@ package dashboard
 import (
 	"testing"
 
-	"github.com/crossplane-contrib/provider-signoz/apis/dashboard/v1alpha1"
-	"github.com/crossplane-contrib/provider-signoz/internal/clients"
+	"github.com/rossigee/provider-signoz/apis/dashboard/v1alpha1"
+	"github.com/rossigee/provider-signoz/internal/clients"
 )
 
 func TestConvertWidgets(t *testing.T) {

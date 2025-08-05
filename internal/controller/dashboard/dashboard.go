@@ -31,9 +31,9 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
-	"github.com/crossplane-contrib/provider-signoz/apis/dashboard/v1alpha1"
-	apisv1beta1 "github.com/crossplane-contrib/provider-signoz/apis/v1beta1"
-	"github.com/crossplane-contrib/provider-signoz/internal/clients"
+	"github.com/rossigee/provider-signoz/apis/dashboard/v1alpha1"
+	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
+	"github.com/rossigee/provider-signoz/internal/clients"
 )
 
 const (
