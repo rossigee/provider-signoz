@@ -227,22 +227,27 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	return managed.ExternalUpdate{}, nil
 }
 
-func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
+func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
 	cr, ok := mg.(*v1alpha1.NotificationChannel)
 	if !ok {
-		return errors.New(errNotChannel)
+		return managed.ExternalDelete{}, errors.New(errNotChannel)
 	}
 
 	channelIDStr := cr.GetAnnotations()["crossplane.io/external-name"]
 	if channelIDStr == "" {
-		return nil // Nothing to delete
+		return managed.ExternalDelete{}, nil // Nothing to delete
 	}
 
 	err := c.service.DeleteChannel(ctx, channelIDStr)
 	if err != nil && !clients.IsNotFound(err) {
-		return errors.Wrap(err, errDeleteChannel)
+		return managed.ExternalDelete{}, errors.Wrap(err, errDeleteChannel)
 	}
 
+	return managed.ExternalDelete{}, nil
+}
+
+func (c *external) Disconnect(ctx context.Context) error {
+	// Nothing to disconnect for SigNoz API client
 	return nil
 }
 

@@ -230,22 +230,27 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	return managed.ExternalUpdate{}, nil
 }
 
-func (c *external) Delete(ctx context.Context, mg resource.Managed) error {
+func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
 	cr, ok := mg.(*v1alpha1.Dashboard)
 	if !ok {
-		return errors.New(errNotDashboard)
+		return managed.ExternalDelete{}, errors.New(errNotDashboard)
 	}
 
 	dashboardID := cr.GetAnnotations()["crossplane.io/external-name"]
 	if dashboardID == "" {
-		return nil // Nothing to delete
+		return managed.ExternalDelete{}, nil // Nothing to delete
 	}
 
 	err := c.service.DeleteDashboard(ctx, dashboardID)
 	if err != nil && !clients.IsNotFound(err) {
-		return errors.Wrap(err, errDeleteDashboard)
+		return managed.ExternalDelete{}, errors.Wrap(err, errDeleteDashboard)
 	}
 
+	return managed.ExternalDelete{}, nil
+}
+
+func (c *external) Disconnect(ctx context.Context) error {
+	// Nothing to disconnect for SigNoz API client
 	return nil
 }
 
