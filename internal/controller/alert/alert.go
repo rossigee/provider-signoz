@@ -26,14 +26,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 
-	"github.com/rossigee/provider-signoz/apis/alert/v1alpha1"
-	channelv1alpha1 "github.com/rossigee/provider-signoz/apis/channel/v1alpha1"
+	"github.com/rossigee/provider-signoz/apis/alert/v1beta1"
+	channelv1beta1 "github.com/rossigee/provider-signoz/apis/channel/v1beta1"
 	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
 )
@@ -53,28 +53,25 @@ const (
 
 // Setup adds a controller that reconciles Alert managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
-	name := managed.ControllerName(v1alpha1.Alert_GroupVersionKind.Kind)
-
-	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
+	name := managed.ControllerName(v1beta1.Alert_GroupVersionKind.Kind)
 
 	r := managed.NewReconciler(mgr,
-		resource.ManagedKind(v1alpha1.Alert_GroupVersionKind),
+		resource.ManagedKind(v1beta1.Alert_GroupVersionKind),
 		managed.WithExternalConnecter(&connector{
 			kube:         resource.ClientApplicator{Client: mgr.GetClient(), Applicator: resource.NewAPIPatchingApplicator(mgr.GetClient())},
-			usage:        resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1beta1.ProviderConfigUsage{}),
+			usage:        resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
 			newServiceFn: clients.NewClient,
 		}),
 		managed.WithReferenceResolver(managed.NewAPISimpleReferenceResolver(mgr.GetClient())),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
-		managed.WithConnectionPublishers(cps...))
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
 		WithEventFilter(resource.DesiredStateChanged()).
-		For(&v1alpha1.Alert{}).
+		For(&v1beta1.Alert{}).
 		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
 }
 
@@ -92,13 +89,17 @@ type connector struct {
 // 3. Getting the credentials specified by the ProviderConfig.
 // 4. Using the credentials to form a client.
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
-	cr, ok := mg.(*v1alpha1.Alert)
+	cr, ok := mg.(*v1beta1.Alert)
 	if !ok {
 		return nil, errors.New(errNotAlert)
 	}
 
 	if err := c.usage.Track(ctx, mg); err != nil {
 		return nil, errors.Wrap(err, errTrackPCUsage)
+	}
+
+	if cr.GetProviderConfigReference() == nil {
+		return nil, errors.New("no providerConfigRef provided")
 	}
 
 	pc := &apisv1beta1.ProviderConfig{}
@@ -125,7 +126,7 @@ type external struct {
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
-	cr, ok := mg.(*v1alpha1.Alert)
+	cr, ok := mg.(*v1beta1.Alert)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotAlert)
 	}
@@ -179,7 +180,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 }
 
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	cr, ok := mg.(*v1alpha1.Alert)
+	cr, ok := mg.(*v1beta1.Alert)
 	if !ok {
 		return managed.ExternalCreation{}, errors.New(errNotAlert)
 	}
@@ -216,7 +217,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*v1alpha1.Alert)
+	cr, ok := mg.(*v1beta1.Alert)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotAlert)
 	}
@@ -252,7 +253,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
-	cr, ok := mg.(*v1alpha1.Alert)
+	cr, ok := mg.(*v1beta1.Alert)
 	if !ok {
 		return managed.ExternalDelete{}, errors.New(errNotAlert)
 	}
@@ -277,7 +278,7 @@ func (c *external) Disconnect(ctx context.Context) error {
 
 // Helper functions
 
-func isAlertUpToDate(spec v1alpha1.AlertParameters, alert *clients.RuleData) bool {
+func isAlertUpToDate(spec v1beta1.AlertParameters, alert *clients.RuleData) bool {
 	if spec.AlertName != alert.AlertName {
 		return false
 	}
@@ -325,7 +326,7 @@ func mapsEqual(a, b map[string]string) bool {
 	return true
 }
 
-func convertCondition(condition v1alpha1.RuleCondition) map[string]interface{} {
+func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
 	result := map[string]interface{}{
 		"compositeQuery": convertCompositeQuery(condition.CompositeQuery),
 	}
@@ -343,7 +344,7 @@ func convertCondition(condition v1alpha1.RuleCondition) map[string]interface{} {
 	return result
 }
 
-func convertCompositeQuery(query v1alpha1.CompositeQuery) map[string]interface{} {
+func convertCompositeQuery(query v1beta1.CompositeQuery) map[string]interface{} {
 	result := map[string]interface{}{
 		"queryType": query.QueryType,
 	}
@@ -387,7 +388,7 @@ func convertCompositeQuery(query v1alpha1.CompositeQuery) map[string]interface{}
 	return result
 }
 
-func convertQueryBuilder(builder v1alpha1.QueryBuilder) map[string]interface{} {
+func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 	result := map[string]interface{}{
 		"dataSource": builder.DataSource,
 	}
@@ -439,7 +440,7 @@ func convertQueryBuilder(builder v1alpha1.QueryBuilder) map[string]interface{} {
 	return result
 }
 
-func convertKeyAttribute(attr v1alpha1.KeyAttribute) map[string]interface{} {
+func convertKeyAttribute(attr v1beta1.KeyAttribute) map[string]interface{} {
 	result := map[string]interface{}{
 		"key":  attr.Key,
 		"type": attr.Type,
@@ -450,7 +451,7 @@ func convertKeyAttribute(attr v1alpha1.KeyAttribute) map[string]interface{} {
 	return result
 }
 
-func convertFilterSet(filterSet v1alpha1.FilterSet) map[string]interface{} {
+func convertFilterSet(filterSet v1beta1.FilterSet) map[string]interface{} {
 	items := make([]interface{}, len(filterSet.Items))
 	for i, item := range filterSet.Items {
 		items[i] = map[string]interface{}{
@@ -466,7 +467,7 @@ func convertFilterSet(filterSet v1alpha1.FilterSet) map[string]interface{} {
 	}
 }
 
-func (c *external) resolveChannelReferences(ctx context.Context, cr *v1alpha1.Alert) error {
+func (c *external) resolveChannelReferences(ctx context.Context, cr *v1beta1.Alert) error {
 	var channelIDs []string
 
 	// Add preferred channels directly
@@ -476,7 +477,7 @@ func (c *external) resolveChannelReferences(ctx context.Context, cr *v1alpha1.Al
 	for _, ref := range cr.Spec.ForProvider.ChannelIDsRef {
 		if ref.Name != "" {
 			// Get the NotificationChannel resource
-			channel := &channelv1alpha1.NotificationChannel{}
+			channel := &channelv1beta1.NotificationChannel{}
 			if err := c.kube.Get(ctx, types.NamespacedName{Name: ref.Name}, channel); err != nil {
 				return errors.Wrapf(err, "cannot get notification channel %s", ref.Name)
 			}
@@ -491,7 +492,7 @@ func (c *external) resolveChannelReferences(ctx context.Context, cr *v1alpha1.Al
 	// Resolve selector-based references
 	if cr.Spec.ForProvider.ChannelIDsSelector != nil {
 		selector := cr.Spec.ForProvider.ChannelIDsSelector
-		channelList := &channelv1alpha1.NotificationChannelList{}
+		channelList := &channelv1beta1.NotificationChannelList{}
 		
 		listOptions := []client.ListOption{}
 		if selector.MatchLabels != nil {

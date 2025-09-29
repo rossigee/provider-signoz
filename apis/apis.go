@@ -19,19 +19,19 @@ package apis
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 
-	alertv1alpha1 "github.com/rossigee/provider-signoz/apis/alert/v1alpha1"
-	channelv1alpha1 "github.com/rossigee/provider-signoz/apis/channel/v1alpha1"
-	dashboardv1alpha1 "github.com/rossigee/provider-signoz/apis/dashboard/v1alpha1"
+	alertv1beta1 "github.com/rossigee/provider-signoz/apis/alert/v1beta1"
+	channelv1beta1 "github.com/rossigee/provider-signoz/apis/channel/v1beta1"
+	dashboardv1beta1 "github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
 	v1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
 )
 
 func init() {
-	// Register all APIs
-	AddToSchemes = append(AddToSchemes, 
+	// Register v2 native APIs only (v1beta1 namespaced)
+	AddToSchemes = append(AddToSchemes,
 		v1beta1.SchemeBuilder.AddToScheme,
-		alertv1alpha1.SchemeBuilder.AddToScheme,
-		channelv1alpha1.SchemeBuilder.AddToScheme,
-		dashboardv1alpha1.SchemeBuilder.AddToScheme,
+		alertv1beta1.SchemeBuilder.AddToScheme,
+		channelv1beta1.SchemeBuilder.AddToScheme,
+		dashboardv1beta1.SchemeBuilder.AddToScheme,
 	)
 }
 

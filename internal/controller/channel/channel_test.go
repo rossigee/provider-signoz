@@ -20,16 +20,16 @@ import (
 	"context"
 	"testing"
 
-	"github.com/rossigee/provider-signoz/apis/channel/v1alpha1"
+	"github.com/rossigee/provider-signoz/apis/channel/v1beta1"
 )
 
 func TestConvertToChannelData(t *testing.T) {
 	e := &external{}
 	
-	spec := v1alpha1.NotificationChannelParameters{
+	spec := v1beta1.NotificationChannelParameters{
 		Name: "Test Channel",
 		Type: "slack",
-		SlackConfigs: []v1alpha1.SlackConfig{
+		SlackConfigs: []v1beta1.SlackConfig{
 			{
 				Channel:    "#test",
 				WebhookURL: stringPtr("https://hooks.slack.com/test"),
@@ -67,7 +67,7 @@ func TestConvertToChannelData(t *testing.T) {
 func TestConvertSlackConfig(t *testing.T) {
 	e := &external{}
 	
-	config := v1alpha1.SlackConfig{
+	config := v1beta1.SlackConfig{
 		Channel:      "#test",
 		WebhookURL:   stringPtr("https://hooks.slack.com/test"),
 		Title:        stringPtr("Test Alert"),
@@ -99,7 +99,7 @@ func TestConvertSlackConfig(t *testing.T) {
 func TestConvertWebhookConfig(t *testing.T) {
 	e := &external{}
 	
-	config := v1alpha1.WebhookConfig{
+	config := v1beta1.WebhookConfig{
 		URL:          stringPtr("https://webhook.example.com"),
 		Method:       stringPtr("POST"),
 		MaxAlerts:    intPtr(5),
@@ -131,7 +131,7 @@ func TestConvertWebhookConfig(t *testing.T) {
 func TestConvertEmailConfig(t *testing.T) {
 	e := &external{}
 	
-	config := v1alpha1.EmailConfig{
+	config := v1beta1.EmailConfig{
 		To:           []string{"test@example.com", "admin@example.com"},
 		SendResolved: boolPtr(true),
 	}
@@ -159,7 +159,7 @@ func TestConvertEmailConfig(t *testing.T) {
 func TestUnsupportedChannelType(t *testing.T) {
 	e := &external{}
 	
-	spec := v1alpha1.NotificationChannelParameters{
+	spec := v1beta1.NotificationChannelParameters{
 		Name: "Test Channel",
 		Type: "unsupported",
 	}

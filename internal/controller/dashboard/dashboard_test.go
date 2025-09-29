@@ -19,19 +19,19 @@ package dashboard
 import (
 	"testing"
 
-	"github.com/rossigee/provider-signoz/apis/dashboard/v1alpha1"
+	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
 )
 
 func TestConvertWidgets(t *testing.T) {
-	widgets := []v1alpha1.Widget{
+	widgets := []v1beta1.Widget{
 		{
 			ID:        "widget-1",
 			Title:     "Test Widget",
 			PanelType: "graph",
-			Query: v1alpha1.Query{
+			Query: v1beta1.Query{
 				QueryType: 1,
-				PromQL: []v1alpha1.PromQuery{
+				PromQL: []v1beta1.PromQuery{
 					{
 						Query: "up",
 						Name:  stringPtr("A"),
@@ -68,7 +68,7 @@ func TestConvertWidgets(t *testing.T) {
 }
 
 func TestIsDashboardUpToDate(t *testing.T) {
-	spec := v1alpha1.DashboardParameters{
+	spec := v1beta1.DashboardParameters{
 		Title:       "Test Dashboard",
 		Description: stringPtr("Test description"),
 		Tags:        []string{"test"},

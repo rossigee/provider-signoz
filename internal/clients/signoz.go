@@ -30,7 +30,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	"github.com/rossigee/provider-signoz/apis/v1beta1"
 )
 
@@ -71,12 +72,28 @@ func NewClient(cfg Config) *Client {
 
 // GetConfig extracts SigNoz configuration from a ProviderConfig
 func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Managed) (*Config, error) {
+	// Get provider config reference from the managed resource's ResourceSpec
+	var pcRef *xpv1.Reference
+
+	// Type assert to extract the ProviderConfigReference from the managed resource
+	switch mr := mg.(type) {
+	case interface{ GetProviderConfigReference() *xpv1.Reference }:
+		pcRef = mr.GetProviderConfigReference()
+	default:
+		return nil, errors.New(errGetProviderConfig)
+	}
+
+	if pcRef == nil {
+		return nil, errors.New(errGetProviderConfig)
+	}
+
 	pc := &v1beta1.ProviderConfig{}
-	if err := c.Get(ctx, types.NamespacedName{Name: mg.GetProviderConfigReference().Name}, pc); err != nil {
+	if err := c.Get(ctx, types.NamespacedName{Name: pcRef.Name}, pc); err != nil {
 		return nil, errors.Wrap(err, errGetProviderConfig)
 	}
 
-	t := resource.NewProviderConfigUsageTracker(c, &v1beta1.ProviderConfigUsage{})
+	// Use no-op tracker for v2.0.0 compatibility
+	t := resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil })
 	if err := t.Track(ctx, mg); err != nil {
 		return nil, errors.Wrap(err, errTrackUsage)
 	}

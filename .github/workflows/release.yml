@@ -1,109 +1,127 @@
+# Standardized Release Template for Crossplane Providers
+# Version: 2025-09-26 - Updated for Go 1.25.1
+#
+# This template handles ALL publishing for releases
+# - Only runs on version tag creation to avoid conflicts with CI
+# - Builds from source and publishes to primary registry
+# - Creates GitHub release with auto-generated notes
+# - Single source of truth for version and latest tags
+
 name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to release (e.g., v1.0.0)'
+        required: true
+        type: string
 
 env:
-  GO_VERSION: '1.24'
+  GO_VERSION: '1.25.1'
 
 jobs:
-  build-and-release:
-    runs-on: ubuntu-22.04
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: true
 
       - name: Setup Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: Vendor Dependencies
+        run: go mod vendor
+
+      - name: Determine Version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Login to Harbor Registry
-        uses: docker/login-action@v3
-        with:
-          registry: harbor.golder.lan
-          username: ${{ secrets.HARBOR_USERNAME }}
-          password: ${{ secrets.HARBOR_PASSWORD }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PAT_TOKEN }}
 
-      - name: Get Version
-        id: version
+      - name: Build and Publish All Artifacts
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "version_no_v=${VERSION#v}" >> $GITHUB_OUTPUT
+          # Use the standardized build system to handle everything
+          export VERSION="${{ steps.version.outputs.version }}"
 
-      - name: Build and Package
-        run: |
-          make build
-          make xpkg.build.provider-signoz VERSION=${{ steps.version.outputs.version_no_v }}
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "Version: ${VERSION}"
 
-      - name: Build and Push Docker Images
-        run: |
-          # Build and push to Harbor
-          make docker-build \
-            REGISTRY=harbor.golder.lan/library \
-            VERSION=${{ steps.version.outputs.version_no_v }}
-          
-          # Tag as latest
-          make docker-build \
-            REGISTRY=harbor.golder.lan/library \
-            VERSION=latest
-          
-          # Also push to GitHub Container Registry
-          make docker-build \
-            REGISTRY=ghcr.io/crossplane-contrib \
-            VERSION=${{ steps.version.outputs.version_no_v }}
-          
-          make docker-build \
-            REGISTRY=ghcr.io/crossplane-contrib \
-            VERSION=latest
+          # Build and publish using make targets that handle Docker + Crossplane packages
+          make publish REGISTRY_ORGS="ghcr.io/${{ github.repository_owner }}" XPKG_REG_ORGS="ghcr.io/${{ github.repository_owner }}"
 
-      - name: Generate Changelog
-        id: changelog
-        run: |
-          # Simple changelog generation
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "## Changes since $PREVIOUS_TAG" > changelog.txt
-            git log --oneline $PREVIOUS_TAG..HEAD >> changelog.txt
-          else
-            echo "## Initial Release" > changelog.txt
-            echo "First release of provider-signoz" >> changelog.txt
-          fi
+          echo "✅ Published to ghcr.io/${{ github.repository_owner }}"
+          echo "🏷️  Tags: ${VERSION}, latest"
 
       - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          release_name: Release ${{ steps.version.outputs.version }}
-          body_path: changelog.txt
+          name: Release ${{ steps.version.outputs.version }}
           draft: false
           prerelease: false
+          generate_release_notes: true
 
-      - name: Upload Release Assets
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: _output/xpkg/provider-signoz-${{ steps.version.outputs.version_no_v }}.xpkg
-          asset_name: provider-signoz-${{ steps.version.outputs.version_no_v }}.xpkg
-          asset_content_type: application/octet-stream
+# Key Principles for this Template:
+#
+# 1. SINGLE SOURCE OF TRUTH FOR PUBLISHING
+#    - Only this workflow publishes to registries
+#    - CI workflow only validates builds
+#    - Eliminates tag conflicts
+#
+# 2. IDENTICAL VERSION AND LATEST TAGS
+#    - Build image once with version tag
+#    - Tag the SAME image as latest (line 87-88)
+#    - Push both tags (they're identical)
+#    - No separate builds = no image differences
+#
+# 3. STANDARDIZED REGISTRY PUBLISHING
+#    - Primary: ghcr.io/rossigee/provider-{name}
+#    - Version tag: v1.2.3
+#    - Latest tag: latest
+#    - Both Crossplane packages and container images
+#
+# 4. BUILD FROM SOURCE
+#    - Always build from the tagged source
+#    - No dependency on pre-built artifacts
+#    - Ensures reproducible builds
+#
+# 5. PROPER AUTHENTICATION
+#    - Uses PAT_TOKEN for registry authentication
+#    - Proper permissions for package publishing
+#    - GitHub release creation
+#
+# To apply this template:
+# 1. Copy this structure to .github/workflows/release.yml
+# 2. Replace PROVIDER_NAME with actual provider name (e.g., provider-mailgun)
+# 3. Ensure Dockerfile path is correct
+# 4. Test with a version tag (should publish both tags identically)
+# 5. Verify latest and version tags point to same image digest

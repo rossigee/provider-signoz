@@ -1,7 +1,8 @@
-apiVersion: alert.signoz.crossplane.io/v1alpha1
+apiVersion: alert.signoz.m.crossplane.io/v1beta1
 kind: Alert
 metadata:
   name: high-latency
+  namespace: default
 spec:
   forProvider:
     alertName: "High Response Time"

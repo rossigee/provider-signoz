@@ -1,7 +1,8 @@
-apiVersion: channel.signoz.crossplane.io/v1alpha1
+apiVersion: channel.signoz.m.crossplane.io/v1beta1
 kind: NotificationChannel
 metadata:
   name: slack-alerts
+  namespace: default
   labels:
     team: platform
     environment: production

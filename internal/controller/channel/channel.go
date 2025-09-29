@@ -29,14 +29,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
 
-	"github.com/rossigee/provider-signoz/apis/channel/v1alpha1"
+	"github.com/rossigee/provider-signoz/apis/channel/v1beta1"
 	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
 )
@@ -57,27 +57,24 @@ const (
 
 // Setup adds a controller that reconciles NotificationChannel managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
-	name := managed.ControllerName(v1alpha1.NotificationChannel_GroupVersionKind.Kind)
-
-	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
+	name := managed.ControllerName(v1beta1.NotificationChannel_GroupVersionKind.Kind)
 
 	r := managed.NewReconciler(mgr,
-		resource.ManagedKind(v1alpha1.NotificationChannel_GroupVersionKind),
+		resource.ManagedKind(v1beta1.NotificationChannel_GroupVersionKind),
 		managed.WithExternalConnecter(&connector{
 			kube:         resource.ClientApplicator{Client: mgr.GetClient(), Applicator: resource.NewAPIPatchingApplicator(mgr.GetClient())},
-			usage:        resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1beta1.ProviderConfigUsage{}),
+			usage:        resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
 			newServiceFn: clients.NewClient,
 		}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
-		managed.WithConnectionPublishers(cps...))
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
 		WithEventFilter(resource.DesiredStateChanged()).
-		For(&v1alpha1.NotificationChannel{}).
+		For(&v1beta1.NotificationChannel{}).
 		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
 }
 
@@ -95,13 +92,17 @@ type connector struct {
 // 3. Getting the credentials specified by the ProviderConfig.
 // 4. Using the credentials to form a client.
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
-	cr, ok := mg.(*v1alpha1.NotificationChannel)
+	cr, ok := mg.(*v1beta1.NotificationChannel)
 	if !ok {
 		return nil, errors.New(errNotChannel)
 	}
 
 	if err := c.usage.Track(ctx, mg); err != nil {
 		return nil, errors.Wrap(err, errTrackPCUsage)
+	}
+
+	if cr.GetProviderConfigReference() == nil {
+		return nil, errors.New("no providerConfigRef provided")
 	}
 
 	pc := &apisv1beta1.ProviderConfig{}
@@ -128,7 +129,7 @@ type external struct {
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
-	cr, ok := mg.(*v1alpha1.NotificationChannel)
+	cr, ok := mg.(*v1beta1.NotificationChannel)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotChannel)
 	}
@@ -179,7 +180,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 }
 
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	cr, ok := mg.(*v1alpha1.NotificationChannel)
+	cr, ok := mg.(*v1beta1.NotificationChannel)
 	if !ok {
 		return managed.ExternalCreation{}, errors.New(errNotChannel)
 	}
@@ -204,7 +205,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*v1alpha1.NotificationChannel)
+	cr, ok := mg.(*v1beta1.NotificationChannel)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotChannel)
 	}
@@ -228,7 +229,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
-	cr, ok := mg.(*v1alpha1.NotificationChannel)
+	cr, ok := mg.(*v1beta1.NotificationChannel)
 	if !ok {
 		return managed.ExternalDelete{}, errors.New(errNotChannel)
 	}
@@ -253,7 +254,7 @@ func (c *external) Disconnect(ctx context.Context) error {
 
 // Helper functions
 
-func (c *external) isChannelUpToDate(ctx context.Context, spec v1alpha1.NotificationChannelParameters, channel *clients.ChannelData) (bool, error) {
+func (c *external) isChannelUpToDate(ctx context.Context, spec v1beta1.NotificationChannelParameters, channel *clients.ChannelData) (bool, error) {
 	if spec.Name != channel.Name {
 		return false, nil
 	}
@@ -267,7 +268,7 @@ func (c *external) isChannelUpToDate(ctx context.Context, spec v1alpha1.Notifica
 	return true, nil
 }
 
-func (c *external) convertToChannelData(ctx context.Context, spec v1alpha1.NotificationChannelParameters) (*clients.ChannelData, error) {
+func (c *external) convertToChannelData(ctx context.Context, spec v1beta1.NotificationChannelParameters) (*clients.ChannelData, error) {
 	channelData := &clients.ChannelData{
 		Name: spec.Name,
 		Type: spec.Type,
@@ -335,7 +336,7 @@ func (c *external) convertToChannelData(ctx context.Context, spec v1alpha1.Notif
 	return channelData, nil
 }
 
-func (c *external) convertSlackConfig(ctx context.Context, config v1alpha1.SlackConfig) (map[string]interface{}, error) {
+func (c *external) convertSlackConfig(ctx context.Context, config v1beta1.SlackConfig) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"channel": config.Channel,
 	}
@@ -366,7 +367,7 @@ func (c *external) convertSlackConfig(ctx context.Context, config v1alpha1.Slack
 	return data, nil
 }
 
-func (c *external) convertWebhookConfig(ctx context.Context, config v1alpha1.WebhookConfig) (map[string]interface{}, error) {
+func (c *external) convertWebhookConfig(ctx context.Context, config v1beta1.WebhookConfig) (map[string]interface{}, error) {
 	data := map[string]interface{}{}
 
 	if config.Method != nil {
@@ -398,7 +399,7 @@ func (c *external) convertWebhookConfig(ctx context.Context, config v1alpha1.Web
 	return data, nil
 }
 
-func (c *external) convertPagerDutyConfig(ctx context.Context, config v1alpha1.PagerDutyConfig) (map[string]interface{}, error) {
+func (c *external) convertPagerDutyConfig(ctx context.Context, config v1beta1.PagerDutyConfig) (map[string]interface{}, error) {
 	data := map[string]interface{}{}
 
 	if config.Severity != nil {
@@ -443,7 +444,7 @@ func (c *external) convertPagerDutyConfig(ctx context.Context, config v1alpha1.P
 	return data, nil
 }
 
-func (c *external) convertEmailConfig(config v1alpha1.EmailConfig) map[string]interface{} {
+func (c *external) convertEmailConfig(config v1beta1.EmailConfig) map[string]interface{} {
 	data := map[string]interface{}{
 		"to": config.To,
 	}
@@ -455,7 +456,7 @@ func (c *external) convertEmailConfig(config v1alpha1.EmailConfig) map[string]in
 	return data
 }
 
-func (c *external) convertOpsGenieConfig(ctx context.Context, config v1alpha1.OpsGenieConfig) (map[string]interface{}, error) {
+func (c *external) convertOpsGenieConfig(ctx context.Context, config v1beta1.OpsGenieConfig) (map[string]interface{}, error) {
 	data := map[string]interface{}{}
 
 	if config.Priority != nil {
@@ -484,7 +485,7 @@ func (c *external) convertOpsGenieConfig(ctx context.Context, config v1alpha1.Op
 	return data, nil
 }
 
-func (c *external) convertMSTeamsConfig(ctx context.Context, config v1alpha1.MSTeamsConfig) (map[string]interface{}, error) {
+func (c *external) convertMSTeamsConfig(ctx context.Context, config v1beta1.MSTeamsConfig) (map[string]interface{}, error) {
 	data := map[string]interface{}{}
 
 	if config.Title != nil {
@@ -513,7 +514,7 @@ func (c *external) convertMSTeamsConfig(ctx context.Context, config v1alpha1.MST
 	return data, nil
 }
 
-func (c *external) convertSNSConfig(ctx context.Context, config v1alpha1.SNSConfig) (map[string]interface{}, error) {
+func (c *external) convertSNSConfig(ctx context.Context, config v1beta1.SNSConfig) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"topic_arn": config.TopicARN,
 		"region":    config.Region,

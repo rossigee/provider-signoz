@@ -14,13 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
 )
 
 // AlertParameters are the configurable fields of an Alert.
@@ -294,15 +294,20 @@ type AlertStatus struct {
 }
 
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 
 // Alert is the Schema for the Alerts API
+// +crossplane:generate:reference:type=github.com/rossigee/provider-signoz/apis/channel/v1beta1.NotificationChannel
+// +crossplane:generate:reference:extractor=github.com/crossplane/crossplane-runtime/pkg/reference.ExternalName()
+// +crossplane:generate:reference:refFieldName=ChannelIDsRef
+// +crossplane:generate:reference:selectorFieldName=ChannelIDsSelector
 // +kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"
 // +kubebuilder:printcolumn:name="STATE",type="string",JSONPath=".status.atProvider.state"
 // +kubebuilder:printcolumn:name="SEVERITY",type="string",JSONPath=".spec.forProvider.severity"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:scope=Cluster,categories={crossplane,managed,signoz}
+// +kubebuilder:resource:scope=Namespaced,categories={crossplane,managed,signoz}
 type Alert struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

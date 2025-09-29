@@ -25,7 +25,7 @@ import (
 
 // Package type metadata.
 const (
-	Group   = "signoz.crossplane.io"
+	Group   = "signoz.m.crossplane.io"
 	Version = "v1beta1"
 )
 

@@ -1,7 +1,8 @@
-apiVersion: dashboard.signoz.crossplane.io/v1alpha1
+apiVersion: dashboard.signoz.m.crossplane.io/v1beta1
 kind: Dashboard
 metadata:
   name: application-metrics
+  namespace: default
 spec:
   forProvider:
     title: "Application Metrics"

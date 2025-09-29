@@ -18,7 +18,7 @@ spec:
 
 ---
 # Slack Notification Channel
-apiVersion: channel.signoz.crossplane.io/v1alpha1
+apiVersion: channel.signoz.m.crossplane.io/v1beta1
 kind: NotificationChannel
 metadata:
   name: slack-critical
@@ -42,7 +42,7 @@ spec:
 
 ---
 # PagerDuty Notification Channel
-apiVersion: channel.signoz.crossplane.io/v1alpha1
+apiVersion: channel.signoz.m.crossplane.io/v1beta1
 kind: NotificationChannel
 metadata:
   name: pagerduty-critical
@@ -65,7 +65,7 @@ spec:
 
 ---
 # Webhook for Non-Critical Alerts
-apiVersion: channel.signoz.crossplane.io/v1alpha1
+apiVersion: channel.signoz.m.crossplane.io/v1beta1
 kind: NotificationChannel
 metadata:
   name: webhook-warnings
@@ -89,7 +89,7 @@ spec:
 
 ---
 # Application Performance Dashboard
-apiVersion: dashboard.signoz.crossplane.io/v1alpha1
+apiVersion: dashboard.signoz.m.crossplane.io/v1beta1
 kind: Dashboard
 metadata:
   name: app-performance
@@ -186,7 +186,7 @@ spec:
 
 ---
 # Critical Error Rate Alert
-apiVersion: alert.signoz.crossplane.io/v1alpha1
+apiVersion: alert.signoz.m.crossplane.io/v1beta1
 kind: Alert
 metadata:
   name: critical-error-rate
@@ -225,7 +225,7 @@ spec:
 
 ---
 # High Latency Warning Alert
-apiVersion: alert.signoz.crossplane.io/v1alpha1
+apiVersion: alert.signoz.m.crossplane.io/v1beta1
 kind: Alert
 metadata:
   name: high-latency-warning
@@ -277,7 +277,7 @@ spec:
 
 ---
 # Database Connection Alert
-apiVersion: alert.signoz.crossplane.io/v1alpha1
+apiVersion: alert.signoz.m.crossplane.io/v1beta1
 kind: Alert
 metadata:
   name: database-connection-errors

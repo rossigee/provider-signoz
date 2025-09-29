@@ -30,7 +30,7 @@ The SigNoz provider enables platform teams to manage SigNoz dashboards, alerts, 
 ### Quick Start
 
 ```bash
-kubectl crossplane install provider ghcr.io/crossplane-contrib/provider-signoz:v0.1.0
+kubectl crossplane install provider ghcr.io/rossigee/provider-signoz:v0.3.0
 ```
 
 ### Declarative Installation
@@ -41,7 +41,7 @@ kind: Provider
 metadata:
   name: provider-signoz
 spec:
-  package: ghcr.io/crossplane-contrib/provider-signoz:v0.1.0
+  package: ghcr.io/rossigee/provider-signoz:v0.3.0
 ```
 
 ## Configuration
@@ -64,7 +64,7 @@ kubectl create secret generic signoz-credentials \
 ### 3. Configure Provider
 
 ```yaml
-apiVersion: signoz.crossplane.io/v1beta1
+apiVersion: signoz.m.crossplane.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
@@ -84,10 +84,11 @@ spec:
 ### Create a Dashboard
 
 ```yaml
-apiVersion: dashboard.signoz.crossplane.io/v1alpha1
+apiVersion: dashboard.signoz.m.crossplane.io/v1beta1
 kind: Dashboard
 metadata:
   name: application-metrics
+  namespace: default
 spec:
   forProvider:
     title: "Application Metrics"
@@ -110,10 +111,11 @@ spec:
 ### Create an Alert Rule
 
 ```yaml
-apiVersion: alert.signoz.crossplane.io/v1alpha1
+apiVersion: alert.signoz.m.crossplane.io/v1beta1
 kind: Alert
 metadata:
   name: high-error-rate
+  namespace: default
 spec:
   forProvider:
     alertName: "High Error Rate"
@@ -138,10 +140,11 @@ spec:
 ### Create a Notification Channel
 
 ```yaml
-apiVersion: channel.signoz.crossplane.io/v1alpha1
+apiVersion: channel.signoz.m.crossplane.io/v1beta1
 kind: NotificationChannel
 metadata:
   name: slack-alerts
+  namespace: default
 spec:
   forProvider:
     name: "Slack Alerts"
@@ -198,8 +201,11 @@ spec:
 
 ```bash
 # Clone the repository
-git clone https://github.com/crossplane-contrib/provider-signoz.git
+git clone https://github.com/rossigee/provider-signoz.git
 cd provider-signoz
+
+# Initialize build system
+make submodules
 
 # Download dependencies
 go mod download
@@ -217,7 +223,7 @@ make test
 make docker-build
 
 # Build Crossplane package
-make build-package
+make xpkg.build
 ```
 
 ## Troubleshooting

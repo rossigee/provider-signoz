@@ -10,7 +10,7 @@ PLATFORMS ?= linux_amd64 linux_arm64
 
 # Setup Go
 # Override golangci-lint version for modern Go support
-GOLANGCILINT_VERSION ?= 2.3.1
+GOLANGCILINT_VERSION ?= 2.4.0
 NPROCS ?= 1
 GO_TEST_PARALLEL := $(shell echo $$(( $(NPROCS) / 2 )))
 GO_STATIC_PACKAGES = $(GO_PROJECT)/cmd/provider
@@ -32,7 +32,7 @@ XPKG_REG_ORGS ?= ghcr.io/rossigee
 XPKG_REG_ORGS_NO_PROMOTE ?= ghcr.io/rossigee
 
 # Optional registries (can be enabled via environment variables)
-# To enable Harbor: export ENABLE_HARBOR_PUBLISH=true make publish XPKG_REG_ORGS=harbor.golder.lan/library
+# Harbor publishing has been removed - using only ghcr.io/rossigee
 # To enable Upbound: export ENABLE_UPBOUND_PUBLISH=true make publish XPKG_REG_ORGS=xpkg.upbound.io/crossplane-contrib
 XPKGS = provider-signoz
 -include build/makelib/xpkg.mk

@@ -25,13 +25,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/event"
-	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 
-	"github.com/rossigee/provider-signoz/apis/dashboard/v1alpha1"
+	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
 	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
 )
@@ -50,27 +50,24 @@ const (
 
 // Setup adds a controller that reconciles Dashboard managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
-	name := managed.ControllerName(v1alpha1.Dashboard_GroupVersionKind.Kind)
-
-	cps := []managed.ConnectionPublisher{managed.NewAPISecretPublisher(mgr.GetClient(), mgr.GetScheme())}
+	name := managed.ControllerName(v1beta1.Dashboard_GroupVersionKind.Kind)
 
 	r := managed.NewReconciler(mgr,
-		resource.ManagedKind(v1alpha1.Dashboard_GroupVersionKind),
+		resource.ManagedKind(v1beta1.Dashboard_GroupVersionKind),
 		managed.WithExternalConnecter(&connector{
 			kube:         resource.ClientApplicator{Client: mgr.GetClient(), Applicator: resource.NewAPIPatchingApplicator(mgr.GetClient())},
-			usage:        resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1beta1.ProviderConfigUsage{}),
+			usage:        resource.TrackerFn(func(ctx context.Context, mg resource.Managed) error { return nil }),
 			newServiceFn: clients.NewClient,
 		}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))),
-		managed.WithConnectionPublishers(cps...))
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorderFor(name))))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
 		WithEventFilter(resource.DesiredStateChanged()).
-		For(&v1alpha1.Dashboard{}).
+		For(&v1beta1.Dashboard{}).
 		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
 }
 
@@ -88,13 +85,17 @@ type connector struct {
 // 3. Getting the credentials specified by the ProviderConfig.
 // 4. Using the credentials to form a client.
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
-	cr, ok := mg.(*v1alpha1.Dashboard)
+	cr, ok := mg.(*v1beta1.Dashboard)
 	if !ok {
 		return nil, errors.New(errNotDashboard)
 	}
 
 	if err := c.usage.Track(ctx, mg); err != nil {
 		return nil, errors.Wrap(err, errTrackPCUsage)
+	}
+
+	if cr.GetProviderConfigReference() == nil {
+		return nil, errors.New("no providerConfigRef provided")
 	}
 
 	pc := &apisv1beta1.ProviderConfig{}
@@ -117,7 +118,7 @@ type external struct {
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
-	cr, ok := mg.(*v1alpha1.Dashboard)
+	cr, ok := mg.(*v1beta1.Dashboard)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotDashboard)
 	}
@@ -166,7 +167,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 }
 
 func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	cr, ok := mg.(*v1alpha1.Dashboard)
+	cr, ok := mg.(*v1beta1.Dashboard)
 	if !ok {
 		return managed.ExternalCreation{}, errors.New(errNotDashboard)
 	}
@@ -199,7 +200,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*v1alpha1.Dashboard)
+	cr, ok := mg.(*v1beta1.Dashboard)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotDashboard)
 	}
@@ -231,7 +232,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
-	cr, ok := mg.(*v1alpha1.Dashboard)
+	cr, ok := mg.(*v1beta1.Dashboard)
 	if !ok {
 		return managed.ExternalDelete{}, errors.New(errNotDashboard)
 	}
@@ -256,7 +257,7 @@ func (c *external) Disconnect(ctx context.Context) error {
 
 // Helper functions
 
-func isDashboardUpToDate(spec v1alpha1.DashboardParameters, dashboard *clients.DashboardData) bool {
+func isDashboardUpToDate(spec v1beta1.DashboardParameters, dashboard *clients.DashboardData) bool {
 	if spec.Title != dashboard.Title {
 		return false
 	}
@@ -284,7 +285,7 @@ func isDashboardUpToDate(spec v1alpha1.DashboardParameters, dashboard *clients.D
 	return true
 }
 
-func convertLayout(layout []v1alpha1.Layout) []interface{} {
+func convertLayout(layout []v1beta1.Layout) []interface{} {
 	result := make([]interface{}, len(layout))
 	for i, l := range layout {
 		result[i] = map[string]interface{}{
@@ -300,7 +301,7 @@ func convertLayout(layout []v1alpha1.Layout) []interface{} {
 	return result
 }
 
-func convertWidgets(widgets []v1alpha1.Widget) []interface{} {
+func convertWidgets(widgets []v1beta1.Widget) []interface{} {
 	result := make([]interface{}, len(widgets))
 	for i, w := range widgets {
 		widget := map[string]interface{}{
@@ -331,7 +332,7 @@ func convertWidgets(widgets []v1alpha1.Widget) []interface{} {
 	return result
 }
 
-func convertQuery(query v1alpha1.Query) map[string]interface{} {
+func convertQuery(query v1beta1.Query) map[string]interface{} {
 	result := map[string]interface{}{
 		"queryType": query.QueryType,
 	}
@@ -379,7 +380,7 @@ func convertQuery(query v1alpha1.Query) map[string]interface{} {
 	return result
 }
 
-func convertMetricsBuilder(builder v1alpha1.MetricsBuilder) map[string]interface{} {
+func convertMetricsBuilder(builder v1beta1.MetricsBuilder) map[string]interface{} {
 	result := map[string]interface{}{}
 
 	if len(builder.QueryBuilder) > 0 {
@@ -411,7 +412,7 @@ func convertMetricsBuilder(builder v1alpha1.MetricsBuilder) map[string]interface
 	return result
 }
 
-func convertVariables(variables map[string]v1alpha1.Variable) map[string]interface{} {
+func convertVariables(variables map[string]v1beta1.Variable) map[string]interface{} {
 	if variables == nil {
 		return nil
 	}

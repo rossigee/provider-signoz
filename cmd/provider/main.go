@@ -19,6 +19,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
@@ -27,15 +28,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/crossplane/crossplane-runtime/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/pkg/feature"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/ratelimiter"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 
 	"github.com/rossigee/provider-signoz/apis"
 	alertcontroller "github.com/rossigee/provider-signoz/internal/controller/alert"
 	channelcontroller "github.com/rossigee/provider-signoz/internal/controller/channel"
 	dashboardcontroller "github.com/rossigee/provider-signoz/internal/controller/dashboard"
+	"github.com/rossigee/provider-signoz/internal/version"
 )
 
 func main() {
@@ -64,7 +66,24 @@ func main() {
 		ctrl.SetLogger(zl)
 	}
 
-	log.Debug("Starting", "sync-interval", syncInterval.String())
+	// Log startup information with build and configuration details
+	log.Info("Provider starting up",
+		"provider", "provider-signoz",
+		"version", version.Version,
+		"go-version", runtime.Version(),
+		"platform", runtime.GOOS+"/"+runtime.GOARCH,
+		"sync-interval", syncInterval.String(),
+		"poll-interval", pollInterval.String(),
+		"max-reconcile-rate", *maxReconcileRate,
+		"leader-election", *leaderElection,
+		"leader-election-namespace", *leaderElectionNamespace,
+		"management-policies", *enableManagementPolicies,
+		"debug-mode", *debug)
+
+	log.Debug("Detailed startup configuration",
+		"sync-interval", syncInterval.String(),
+		"poll-interval", pollInterval.String(),
+		"max-reconcile-rate", *maxReconcileRate)
 
 	cfg, err := ctrl.GetConfig()
 	if err != nil {
@@ -113,6 +132,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setup v2 native controllers (v1beta1 namespaced resources)
 	if err := dashboardcontroller.Setup(mgr, o); err != nil {
 		log.Info("Cannot setup dashboard controller", "error", err)
 		os.Exit(1)

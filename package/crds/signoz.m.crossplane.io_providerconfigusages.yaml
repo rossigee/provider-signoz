@@ -3,10 +3,10 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
-  name: providerconfigusages.signoz.crossplane.io
+    controller-gen.kubebuilder.io/version: v0.18.0
+  name: providerconfigusages.signoz.m.crossplane.io
 spec:
-  group: signoz.crossplane.io
+  group: signoz.m.crossplane.io
   names:
     categories:
     - crossplane
