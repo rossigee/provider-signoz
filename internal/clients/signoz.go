@@ -36,10 +36,10 @@ import (
 )
 
 const (
-	errNoProviderConfig = "no providerConfig specified"
-	errGetProviderConfig = "cannot get providerConfig"
-	errTrackUsage = "cannot track ProviderConfig usage"
-	errExtractCredentials = "cannot extract credentials"
+	errNoProviderConfig     = "no providerConfig specified"
+	errGetProviderConfig    = "cannot get providerConfig"
+	errTrackUsage           = "cannot track ProviderConfig usage"
+	errExtractCredentials   = "cannot extract credentials"
 	errUnmarshalCredentials = "cannot unmarshal signoz credentials as JSON"
 )
 
@@ -98,7 +98,7 @@ func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Man
 		return nil, errors.Wrap(err, errTrackUsage)
 	}
 
-	data, err := resource.CommonCredentialExtractor(ctx, pc.Spec.Credentials.Source, c, pc.Spec.Credentials.CommonCredentialSelectors)
+	data, err := resource.CommonCredentialExtractor(ctx, pc.Spec.Credentials.Source, c.Client, pc.Spec.Credentials.CommonCredentialSelectors)
 	if err != nil {
 		return nil, errors.Wrap(err, errExtractCredentials)
 	}
@@ -125,7 +125,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	logger := log.FromContext(ctx)
 
 	url := fmt.Sprintf("%s%s", c.config.BaseURL, path)
-	
+
 	var bodyReader io.Reader
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
@@ -145,7 +145,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	req.Header.Set("SIGNOZ-API-KEY", c.config.APIKey)
 
 	logger.V(1).Info("Making request", "method", method, "url", url)
-	
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute request")
@@ -173,7 +173,7 @@ func parseResponse(resp *http.Response, v interface{}) error {
 			_ = err
 		}
 	}()
-	
+
 	if v == nil {
 		return nil
 	}
@@ -292,21 +292,21 @@ func (c *Client) ListDashboards(ctx context.Context) ([]*DashboardData, error) {
 
 // RuleData represents an alert rule in SigNoz
 type RuleData struct {
-	ID               string                 `json:"id,omitempty"`
-	AlertName        string                 `json:"alert"`
-	AlertType        string                 `json:"alertType"`
-	RuleType         string                 `json:"ruleType,omitempty"`
-	EvalWindow       string                 `json:"evalWindow"`
-	Frequency        string                 `json:"frequency"`
-	Condition        map[string]interface{} `json:"condition"`
-	Labels           map[string]string      `json:"labels,omitempty"`
-	Annotations      map[string]string      `json:"annotations,omitempty"`
-	PreferredChannels []string              `json:"preferredChannels,omitempty"`
-	Disabled         bool                   `json:"disabled"`
-	Version          string                 `json:"version,omitempty"`
-	CreatedAt        string                 `json:"created_at,omitempty"`
-	UpdatedAt        string                 `json:"updated_at,omitempty"`
-	State            string                 `json:"state,omitempty"`
+	ID                string                 `json:"id,omitempty"`
+	AlertName         string                 `json:"alert"`
+	AlertType         string                 `json:"alertType"`
+	RuleType          string                 `json:"ruleType,omitempty"`
+	EvalWindow        string                 `json:"evalWindow"`
+	Frequency         string                 `json:"frequency"`
+	Condition         map[string]interface{} `json:"condition"`
+	Labels            map[string]string      `json:"labels,omitempty"`
+	Annotations       map[string]string      `json:"annotations,omitempty"`
+	PreferredChannels []string               `json:"preferredChannels,omitempty"`
+	Disabled          bool                   `json:"disabled"`
+	Version           string                 `json:"version,omitempty"`
+	CreatedAt         string                 `json:"created_at,omitempty"`
+	UpdatedAt         string                 `json:"updated_at,omitempty"`
+	State             string                 `json:"state,omitempty"`
 }
 
 // RuleResponse wraps rule API responses

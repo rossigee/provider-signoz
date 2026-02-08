@@ -24,17 +24,17 @@ import (
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
-	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
 
 	"github.com/rossigee/provider-signoz/apis/channel/v1beta1"
 	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
@@ -117,7 +117,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	return &external{
 		service: c.newServiceFn(*cfg),
-		kube:    c.kube,
+		kube:    c.kube.Client,
 	}, nil
 }
 
@@ -154,13 +154,13 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	// Update the status with observed values
 	cr.Status.AtProvider.ID = channel.ID
-	
+
 	if channel.CreatedAt != "" {
 		if createdAt, err := time.Parse(time.RFC3339, channel.CreatedAt); err == nil {
 			cr.Status.AtProvider.CreatedAt = &metav1.Time{Time: createdAt}
 		}
 	}
-	
+
 	if channel.UpdatedAt != "" {
 		if updatedAt, err := time.Parse(time.RFC3339, channel.UpdatedAt); err == nil {
 			cr.Status.AtProvider.UpdatedAt = &metav1.Time{Time: updatedAt}

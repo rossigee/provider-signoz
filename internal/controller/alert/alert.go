@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -39,16 +39,16 @@ import (
 )
 
 const (
-	errNotAlert       = "managed resource is not an Alert custom resource"
-	errTrackPCUsage   = "cannot track ProviderConfig usage"
-	errGetPC          = "cannot get ProviderConfig"
-	errGetCreds       = "cannot get credentials"
-	errNewClient      = "cannot create new Service"
-	errCreateAlert    = "cannot create alert"
-	errUpdateAlert    = "cannot update alert"
-	errDeleteAlert    = "cannot delete alert"
-	errGetAlert       = "cannot get alert"
-	errResolveRefs    = "cannot resolve channel references"
+	errNotAlert     = "managed resource is not an Alert custom resource"
+	errTrackPCUsage = "cannot track ProviderConfig usage"
+	errGetPC        = "cannot get ProviderConfig"
+	errGetCreds     = "cannot get credentials"
+	errNewClient    = "cannot create new Service"
+	errCreateAlert  = "cannot create alert"
+	errUpdateAlert  = "cannot update alert"
+	errDeleteAlert  = "cannot delete alert"
+	errGetAlert     = "cannot get alert"
+	errResolveRefs  = "cannot resolve channel references"
 )
 
 // Setup adds a controller that reconciles Alert managed resources.
@@ -114,7 +114,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	return &external{
 		service: c.newServiceFn(*cfg),
-		kube:    c.kube,
+		kube:    c.kube.Client,
 	}, nil
 }
 
@@ -152,13 +152,13 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	// Update the status with observed values
 	cr.Status.AtProvider.ID = alert.ID
 	cr.Status.AtProvider.State = alert.State
-	
+
 	if alert.CreatedAt != "" {
 		if createdAt, err := time.Parse(time.RFC3339, alert.CreatedAt); err == nil {
 			cr.Status.AtProvider.CreatedAt = &metav1.Time{Time: createdAt}
 		}
 	}
-	
+
 	if alert.UpdatedAt != "" {
 		if updatedAt, err := time.Parse(time.RFC3339, alert.UpdatedAt); err == nil {
 			cr.Status.AtProvider.UpdatedAt = &metav1.Time{Time: updatedAt}
@@ -493,12 +493,12 @@ func (c *external) resolveChannelReferences(ctx context.Context, cr *v1beta1.Ale
 	if cr.Spec.ForProvider.ChannelIDsSelector != nil {
 		selector := cr.Spec.ForProvider.ChannelIDsSelector
 		channelList := &channelv1beta1.NotificationChannelList{}
-		
+
 		listOptions := []client.ListOption{}
 		if selector.MatchLabels != nil {
 			listOptions = append(listOptions, client.MatchingLabels(selector.MatchLabels))
 		}
-		
+
 		if err := c.kube.List(ctx, channelList, listOptions...); err != nil {
 			return errors.Wrap(err, "cannot list notification channels")
 		}
