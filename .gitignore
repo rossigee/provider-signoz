@@ -16,7 +16,7 @@ bin/
 go.work
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
 
 # Go build cache
 .cache/
