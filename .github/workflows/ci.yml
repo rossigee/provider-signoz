@@ -190,13 +190,12 @@ jobs:
 
       - name: Validate Build Process
         run: |
-          # Validate that all build steps work without publishing
-          echo "Repository: ${{ github.repository }}"
-          echo "Repository owner: ${{ github.repository_owner }}"
-          
           # Build binary and Docker image
           make build
           echo "✅ Binary and Docker image build successful"
+
+          # Tag Docker image for CLI access
+          docker tag docker.io/build-30391364/provider-signoz-amd64 build-30391364/provider-signoz-amd64
 
           # Build Crossplane package locally (without push)
           make xpkg.build
