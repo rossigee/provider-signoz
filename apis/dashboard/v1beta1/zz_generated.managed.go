@@ -19,7 +19,7 @@ limitations under the License.
 package v1beta1
 
 import (
-	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/meta"
 )
 
@@ -28,24 +28,19 @@ func (mg *Dashboard) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
-// GetDeletionPolicy of this Dashboard.
-func (mg *Dashboard) GetDeletionPolicy() xpv1.DeletionPolicy {
-	return mg.Spec.DeletionPolicy
-}
-
 // GetManagementPolicies of this Dashboard.
 func (mg *Dashboard) GetManagementPolicies() xpv1.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this Dashboard.
-func (mg *Dashboard) GetProviderConfigReference() *xpv1.Reference {
+func (mg *Dashboard) GetProviderConfigReference() *xpv1.ProviderConfigReference {
 	return mg.Spec.ProviderConfigReference
 }
 
 
 // GetWriteConnectionSecretToReference of this Dashboard.
-func (mg *Dashboard) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *Dashboard) GetWriteConnectionSecretToReference() *xpv1.LocalSecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
@@ -54,24 +49,19 @@ func (mg *Dashboard) SetConditions(c ...xpv1.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
-// SetDeletionPolicy of this Dashboard.
-func (mg *Dashboard) SetDeletionPolicy(r xpv1.DeletionPolicy) {
-	mg.Spec.DeletionPolicy = r
-}
-
 // SetManagementPolicies of this Dashboard.
 func (mg *Dashboard) SetManagementPolicies(r xpv1.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this Dashboard.
-func (mg *Dashboard) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *Dashboard) SetProviderConfigReference(r *xpv1.ProviderConfigReference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
 
 // SetWriteConnectionSecretToReference of this Dashboard.
-func (mg *Dashboard) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *Dashboard) SetWriteConnectionSecretToReference(r *xpv1.LocalSecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 

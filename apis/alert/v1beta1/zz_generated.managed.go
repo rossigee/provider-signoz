@@ -19,7 +19,7 @@ limitations under the License.
 package v1beta1
 
 import (
-	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/meta"
 )
 
@@ -28,23 +28,18 @@ func (mg *Alert) GetCondition(ct xpv1.ConditionType) xpv1.Condition {
 	return mg.Status.GetCondition(ct)
 }
 
-// GetDeletionPolicy of this Alert.
-func (mg *Alert) GetDeletionPolicy() xpv1.DeletionPolicy {
-	return mg.Spec.DeletionPolicy
-}
-
 // GetManagementPolicies of this Alert.
 func (mg *Alert) GetManagementPolicies() xpv1.ManagementPolicies {
 	return mg.Spec.ManagementPolicies
 }
 
 // GetProviderConfigReference of this Alert.
-func (mg *Alert) GetProviderConfigReference() *xpv1.Reference {
+func (mg *Alert) GetProviderConfigReference() *xpv1.ProviderConfigReference {
 	return mg.Spec.ProviderConfigReference
 }
 
 // GetWriteConnectionSecretToReference of this Alert.
-func (mg *Alert) GetWriteConnectionSecretToReference() *xpv1.SecretReference {
+func (mg *Alert) GetWriteConnectionSecretToReference() *xpv1.LocalSecretReference {
 	return mg.Spec.WriteConnectionSecretToReference
 }
 
@@ -53,23 +48,18 @@ func (mg *Alert) SetConditions(c ...xpv1.Condition) {
 	mg.Status.SetConditions(c...)
 }
 
-// SetDeletionPolicy of this Alert.
-func (mg *Alert) SetDeletionPolicy(r xpv1.DeletionPolicy) {
-	mg.Spec.DeletionPolicy = r
-}
-
 // SetManagementPolicies of this Alert.
 func (mg *Alert) SetManagementPolicies(r xpv1.ManagementPolicies) {
 	mg.Spec.ManagementPolicies = r
 }
 
 // SetProviderConfigReference of this Alert.
-func (mg *Alert) SetProviderConfigReference(r *xpv1.Reference) {
+func (mg *Alert) SetProviderConfigReference(r *xpv1.ProviderConfigReference) {
 	mg.Spec.ProviderConfigReference = r
 }
 
 // SetWriteConnectionSecretToReference of this Alert.
-func (mg *Alert) SetWriteConnectionSecretToReference(r *xpv1.SecretReference) {
+func (mg *Alert) SetWriteConnectionSecretToReference(r *xpv1.LocalSecretReference) {
 	mg.Spec.WriteConnectionSecretToReference = r
 }
 

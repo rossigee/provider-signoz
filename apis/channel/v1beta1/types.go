@@ -20,7 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	xpv1 "github.com/crossplane/crossplane-runtime/v2/apis/common/v1"
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // NotificationChannelParameters are the configurable fields of a NotificationChannel.
@@ -226,7 +226,7 @@ type SNSConfig struct {
 
 // NotificationChannelSpec defines the desired state of NotificationChannel
 type NotificationChannelSpec struct {
-	xpv1.ResourceSpec `json:",inline"`
+	xpv1.ManagedResourceSpec `json:",inline"`
 	ForProvider       NotificationChannelParameters `json:"forProvider"`
 }
 
@@ -244,7 +244,7 @@ type NotificationChannelObservation struct {
 
 // NotificationChannelStatus represents the observed state of a NotificationChannel.
 type NotificationChannelStatus struct {
-	xpv1.ResourceStatus `json:",inline"`
+	xpv1.ConditionedStatus `json:",inline"`
 	AtProvider          NotificationChannelObservation `json:"atProvider,omitempty"`
 }
 
