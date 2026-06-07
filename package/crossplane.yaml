@@ -10,11 +10,11 @@ metadata:
     # Provider website
     website: "https://github.com/crossplane-contrib/provider-signoz"
     # Provider source repository
-    source: "https://github.com/crossplane-contrib/provider-signoz"
+    source: "https://github.com/rossigee/provider-signoz"
     # Provider documentation
-    docs: "https://github.com/crossplane-contrib/provider-signoz"
+    docs: "https://github.com/rossigee/provider-signoz"
     # Maintainer information
-    maintainer: "The Crossplane Authors"
+    maintainer: "Ross Golder <ross@golder.org>"
 spec:
   controller:
     image: ghcr.io/rossigee/provider-signoz:v0.2.0
