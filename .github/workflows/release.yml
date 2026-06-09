@@ -22,7 +22,7 @@ jobs:
     with:
       repository: ${{ github.event.repository.name }}
       version: ${{ github.event.inputs.version || github.ref_name }}
-      go-version: '1.25.7'
+      go-version: '1.26.4'
       registry_org: 'rossigee'  # Publish to ghcr.io/rossigee
       mirror: false             # Disable mirroring to xpkg.upbound.io
       cleanup-disk: true
