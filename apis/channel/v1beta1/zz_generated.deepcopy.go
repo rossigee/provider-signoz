@@ -21,7 +21,7 @@ limitations under the License.
 package v1beta1
 
 import (
-	v1 "github.com/crossplane/crossplane/apis/v2/core/v2"
+	"github.com/crossplane/crossplane/apis/v2/core/v2"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -60,7 +60,7 @@ func (in *MSTeamsConfig) DeepCopyInto(out *MSTeamsConfig) {
 	}
 	if in.WebhookURLSecretRef != nil {
 		in, out := &in.WebhookURLSecretRef, &out.WebhookURLSecretRef
-		*out = new(v1.SecretKeySelector)
+		*out = new(v2.SecretKeySelector)
 		**out = **in
 	}
 	if in.Title != nil {
@@ -275,7 +275,7 @@ func (in *OpsGenieConfig) DeepCopyInto(out *OpsGenieConfig) {
 	}
 	if in.APIKeySecretRef != nil {
 		in, out := &in.APIKeySecretRef, &out.APIKeySecretRef
-		*out = new(v1.SecretKeySelector)
+		*out = new(v2.SecretKeySelector)
 		**out = **in
 	}
 	if in.Priority != nil {
@@ -310,7 +310,7 @@ func (in *PagerDutyConfig) DeepCopyInto(out *PagerDutyConfig) {
 	}
 	if in.RoutingKeySecretRef != nil {
 		in, out := &in.RoutingKeySecretRef, &out.RoutingKeySecretRef
-		*out = new(v1.SecretKeySelector)
+		*out = new(v2.SecretKeySelector)
 		**out = **in
 	}
 	if in.ServiceKey != nil {
@@ -320,7 +320,7 @@ func (in *PagerDutyConfig) DeepCopyInto(out *PagerDutyConfig) {
 	}
 	if in.ServiceKeySecretRef != nil {
 		in, out := &in.ServiceKeySecretRef, &out.ServiceKeySecretRef
-		*out = new(v1.SecretKeySelector)
+		*out = new(v2.SecretKeySelector)
 		**out = **in
 	}
 	if in.Severity != nil {
@@ -350,12 +350,12 @@ func (in *SNSConfig) DeepCopyInto(out *SNSConfig) {
 	*out = *in
 	if in.AccessKeySecretRef != nil {
 		in, out := &in.AccessKeySecretRef, &out.AccessKeySecretRef
-		*out = new(v1.SecretKeySelector)
+		*out = new(v2.SecretKeySelector)
 		**out = **in
 	}
 	if in.SecretKeySecretRef != nil {
 		in, out := &in.SecretKeySecretRef, &out.SecretKeySecretRef
-		*out = new(v1.SecretKeySelector)
+		*out = new(v2.SecretKeySelector)
 		**out = **in
 	}
 	if in.SendResolved != nil {
@@ -385,7 +385,7 @@ func (in *SlackConfig) DeepCopyInto(out *SlackConfig) {
 	}
 	if in.WebhookURLSecretRef != nil {
 		in, out := &in.WebhookURLSecretRef, &out.WebhookURLSecretRef
-		*out = new(v1.SecretKeySelector)
+		*out = new(v2.SecretKeySelector)
 		**out = **in
 	}
 	if in.Title != nil {
@@ -420,7 +420,7 @@ func (in *WebhookConfig) DeepCopyInto(out *WebhookConfig) {
 	}
 	if in.URLSecretRef != nil {
 		in, out := &in.URLSecretRef, &out.URLSecretRef
-		*out = new(v1.SecretKeySelector)
+		*out = new(v2.SecretKeySelector)
 		**out = **in
 	}
 	if in.Method != nil {
