@@ -17,11 +17,11 @@ limitations under the License.
 package v1beta1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
+	"github.com/crossplane/crossplane/apis/v2/core/v2"
 )
+
 
 // DashboardParameters are the configurable fields of a Dashboard.
 type DashboardParameters struct {
@@ -311,6 +311,4 @@ var (
 	Dashboard_GroupVersionKind = SchemeGroupVersion.WithKind(Dashboard_Kind)
 )
 
-func init() {
-	SchemeBuilder.Register(&Dashboard{}, &DashboardList{})
 }

@@ -17,11 +17,11 @@ limitations under the License.
 package v1beta1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-
-	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
+	"github.com/crossplane/crossplane/apis/v2/core/v2"
 )
+
 
 // AlertParameters are the configurable fields of an Alert.
 type AlertParameters struct {
@@ -332,6 +332,4 @@ var (
 	Alert_GroupVersionKind = SchemeGroupVersion.WithKind(Alert_Kind)
 )
 
-func init() {
-	SchemeBuilder.Register(&Alert{}, &AlertList{})
 }

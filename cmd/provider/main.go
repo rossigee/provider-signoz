@@ -18,29 +18,26 @@ package main
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
-	"time"
-
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
-
 	"github.com/rossigee/provider-signoz/apis"
-	alertcontroller "github.com/rossigee/provider-signoz/internal/controller/alert"
-	channelcontroller "github.com/rossigee/provider-signoz/internal/controller/channel"
-	dashboardcontroller "github.com/rossigee/provider-signoz/internal/controller/dashboard"
+	"github.com/rossigee/provider-signoz/internal/controller/alert"
+	"github.com/rossigee/provider-signoz/internal/controller/channel"
+	"github.com/rossigee/provider-signoz/internal/controller/dashboard"
 	"github.com/rossigee/provider-signoz/internal/tracing"
 	"github.com/rossigee/provider-signoz/internal/version"
+	"gopkg.in/alecthomas/kingpin.v2"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"time"
 )
 
 func main() {
@@ -53,13 +50,12 @@ func main() {
 		leaderElection          = app.Flag("leader-election", "Use leader election for the controller manager.").Short('l').Default("false").Envar("LEADER_ELECTION").Bool()
 		leaderElectionNamespace = app.Flag("leader-election-namespace", "Namespace in which to create the leader election configmap.").Default("crossplane-system").Envar("LEADER_ELECTION_NAMESPACE").String()
 
-		pollInterval              = app.Flag("poll", "Poll interval controls how often an individual resource should be checked for drift.").Default("10m").Duration()
-		maxReconcileRate          = app.Flag("max-reconcile-rate", "The global maximum rate per second at which resources may checked for drift from the desired state.").Default("10").Int()
-		enableManagementPolicies  = app.Flag("enable-management-policies", "Enable support for Management Policies.").Default("false").Envar("ENABLE_MANAGEMENT_POLICIES").Bool()
+		pollInterval             = app.Flag("poll", "Poll interval controls how often an individual resource should be checked for drift.").Default("10m").Duration()
+		maxReconcileRate         = app.Flag("max-reconcile-rate", "The global maximum rate per second at which resources may checked for drift from the desired state.").Default("10").Int()
+		enableManagementPolicies = app.Flag("enable-management-policies", "Enable support for Management Policies.").Default("false").Envar("ENABLE_MANAGEMENT_POLICIES").Bool()
 	)
 
 	kingpin.MustParse(app.Parse(os.Args[1:]))
-
 
 	zl := zap.New(zap.UseDevMode(*debug))
 	log := logging.NewLogrLogger(zl.WithName("provider-signoz"))
@@ -110,12 +106,12 @@ func main() {
 		// hundreds of reconciles per second and ~200rps to the API
 		// server. Switching to Leases only and longer leases appears to
 		// alleviate this.
-		LeaderElection:                *leaderElection,
-		LeaderElectionID:              "crossplane-leader-election-provider-signoz",
-		LeaderElectionResourceLock:    resourcelock.LeasesResourceLock,
-		LeaderElectionNamespace:       *leaderElectionNamespace,
-		LeaseDuration:                 func() *time.Duration { d := 60 * time.Second; return &d }(),
-		RenewDeadline:                 func() *time.Duration { d := 50 * time.Second; return &d }(),
+		LeaderElection:             *leaderElection,
+		LeaderElectionID:           "crossplane-leader-election-provider-signoz",
+		LeaderElectionResourceLock: resourcelock.LeasesResourceLock,
+		LeaderElectionNamespace:    *leaderElectionNamespace,
+		LeaseDuration:              func() *time.Duration { d := 60 * time.Second; return &d }(),
+		RenewDeadline:              func() *time.Duration { d := 50 * time.Second; return &d }(),
 	})
 	if err != nil {
 		log.Info("Cannot create manager", "error", err)

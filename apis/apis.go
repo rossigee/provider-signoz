@@ -17,12 +17,11 @@ limitations under the License.
 package apis
 
 import (
+	"github.com/rossigee/provider-signoz/apis/alert/v1beta1"
+	"github.com/rossigee/provider-signoz/apis/channel/v1beta1"
+	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
+	"github.com/rossigee/provider-signoz/apis/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
-
-	alertv1beta1 "github.com/rossigee/provider-signoz/apis/alert/v1beta1"
-	channelv1beta1 "github.com/rossigee/provider-signoz/apis/channel/v1beta1"
-	dashboardv1beta1 "github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
-	v1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
 )
 
 func init() {

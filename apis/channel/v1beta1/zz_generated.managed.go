@@ -19,8 +19,8 @@ limitations under the License.
 package v1beta1
 
 import (
-	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/meta"
+	"github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 // GetCondition of this NotificationChannel.
@@ -37,7 +37,6 @@ func (mg *NotificationChannel) GetManagementPolicies() xpv1.ManagementPolicies {
 func (mg *NotificationChannel) GetProviderConfigReference() *xpv1.ProviderConfigReference {
 	return mg.Spec.ProviderConfigReference
 }
-
 
 // GetWriteConnectionSecretToReference of this NotificationChannel.
 func (mg *NotificationChannel) GetWriteConnectionSecretToReference() *xpv1.LocalSecretReference {
@@ -58,7 +57,6 @@ func (mg *NotificationChannel) SetManagementPolicies(r xpv1.ManagementPolicies) 
 func (mg *NotificationChannel) SetProviderConfigReference(r *xpv1.ProviderConfigReference) {
 	mg.Spec.ProviderConfigReference = r
 }
-
 
 // SetWriteConnectionSecretToReference of this NotificationChannel.
 func (mg *NotificationChannel) SetWriteConnectionSecretToReference(r *xpv1.LocalSecretReference) {

@@ -18,24 +18,21 @@ package alert
 
 import (
 	"context"
-	"time"
-
-	"github.com/pkg/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
-
+	"github.com/pkg/errors"
 	"github.com/rossigee/provider-signoz/apis/alert/v1beta1"
-	channelv1beta1 "github.com/rossigee/provider-signoz/apis/channel/v1beta1"
-	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
+	"github.com/rossigee/provider-signoz/apis/channel/v1beta1"
+	"github.com/rossigee/provider-signoz/apis/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"time"
 )
 
 const (
@@ -65,7 +62,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		managed.WithReferenceResolver(managed.NewAPISimpleReferenceResolver(mgr.GetClient())),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorder(name))), 
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorder(name))),
 	)
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -80,7 +77,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 // is called.
 type connector struct {
 	kube         resource.ClientApplicator
-	usage resource.ModernTracker
+	usage        resource.ModernTracker
 	newServiceFn func(cfg clients.Config) *clients.Client
 }
 

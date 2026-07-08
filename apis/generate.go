@@ -22,5 +22,5 @@ limitations under the License.
 package apis
 
 import (
-	_ "sigs.k8s.io/controller-tools/cmd/controller-gen" //nolint:typecheck
+	"sigs.k8s.io/controller-tools/cmd/controller-gen"
 )

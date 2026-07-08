@@ -17,10 +17,9 @@ limitations under the License.
 package dashboard
 
 import (
-	"testing"
-
 	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
+	"testing"
 )
 
 func TestConvertWidgets(t *testing.T) {
@@ -42,25 +41,25 @@ func TestConvertWidgets(t *testing.T) {
 	}
 
 	result := convertWidgets(widgets)
-	
+
 	if len(result) != 1 {
 		t.Errorf("Expected 1 widget, got %d", len(result))
 	}
-	
+
 	widget := result[0].(map[string]interface{})
-	
+
 	if widget["id"] != "widget-1" {
 		t.Errorf("Expected widget ID widget-1, got %v", widget["id"])
 	}
-	
+
 	if widget["title"] != "Test Widget" {
 		t.Errorf("Expected widget title 'Test Widget', got %v", widget["title"])
 	}
-	
+
 	if widget["panelType"] != "graph" {
 		t.Errorf("Expected panel type 'graph', got %v", widget["panelType"])
 	}
-	
+
 	query := widget["query"].(map[string]interface{})
 	if query["queryType"] != 1 {
 		t.Errorf("Expected query type 1, got %v", query["queryType"])
@@ -73,17 +72,17 @@ func TestIsDashboardUpToDate(t *testing.T) {
 		Description: stringPtr("Test description"),
 		Tags:        []string{"test"},
 	}
-	
+
 	dashboard := &clients.DashboardData{
 		Title:       "Test Dashboard",
 		Description: "Test description",
 		Tags:        []string{"test"},
 	}
-	
+
 	if !isDashboardUpToDate(spec, dashboard) {
 		t.Error("Expected dashboard to be up to date")
 	}
-	
+
 	// Test with different title
 	dashboard.Title = "Different Title"
 	if isDashboardUpToDate(spec, dashboard) {

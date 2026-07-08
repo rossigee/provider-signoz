@@ -21,18 +21,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	"github.com/crossplane/crossplane/apis/v2/core/v2"
+	"github.com/pkg/errors"
+	"github.com/rossigee/provider-signoz/apis/v1beta1"
 	"io"
+	"k8s.io/apimachinery/pkg/types"
 	"net/http"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
-	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
-	"github.com/rossigee/provider-signoz/apis/v1beta1"
 )
 
 const (

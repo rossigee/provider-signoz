@@ -18,22 +18,19 @@ package dashboard
 
 import (
 	"context"
-	"time"
-
-	"github.com/pkg/errors"
-	"k8s.io/apimachinery/pkg/types"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
-
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
-
+	"github.com/pkg/errors"
 	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
-	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
+	"github.com/rossigee/provider-signoz/apis/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
+	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime"
+	"time"
 )
 
 const (
@@ -61,7 +58,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
-		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorder(name))), 
+		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorder(name))),
 	)
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -76,7 +73,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 // is called.
 type connector struct {
 	kube         resource.ClientApplicator
-	usage resource.ModernTracker
+	usage        resource.ModernTracker
 	newServiceFn func(cfg clients.Config) *clients.Client
 }
 
@@ -145,13 +142,13 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	// Update the status with observed values
 	cr.Status.AtProvider.ID = dashboard.ID
 	cr.Status.AtProvider.UUID = dashboard.UUID
-	
+
 	if dashboard.CreatedAt != "" {
 		if createdAt, err := time.Parse(time.RFC3339, dashboard.CreatedAt); err == nil {
 			cr.Status.AtProvider.CreatedAt = &metav1.Time{Time: createdAt}
 		}
 	}
-	
+
 	if dashboard.UpdatedAt != "" {
 		if updatedAt, err := time.Parse(time.RFC3339, dashboard.UpdatedAt); err == nil {
 			cr.Status.AtProvider.UpdatedAt = &metav1.Time{Time: updatedAt}
@@ -421,9 +418,9 @@ func convertVariables(variables map[string]v1beta1.Variable) map[string]interfac
 	result := make(map[string]interface{})
 	for k, v := range variables {
 		variable := map[string]interface{}{
-			"type":           v.Type,
-			"multiSelect":    v.MultiSelect,
-			"showAllOption":  v.ShowAllOption,
+			"type":          v.Type,
+			"multiSelect":   v.MultiSelect,
+			"showAllOption": v.ShowAllOption,
 		}
 
 		if v.Description != nil {

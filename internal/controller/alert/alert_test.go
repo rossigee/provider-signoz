@@ -17,10 +17,9 @@ limitations under the License.
 package alert
 
 import (
-	"testing"
-
 	"github.com/rossigee/provider-signoz/apis/alert/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
+	"testing"
 )
 
 func TestIsAlertUpToDate(t *testing.T) {
