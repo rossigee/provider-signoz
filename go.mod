@@ -3,8 +3,8 @@ module github.com/rossigee/provider-signoz
 go 1.26.4
 
 require (
-	github.com/crossplane/crossplane-runtime/v2 v2.3.2
-	github.com/crossplane/crossplane/apis/v2 v2.0.0-20260424160951-8f231230ebb6
+	github.com/crossplane/crossplane-runtime/v2 v2.4.0-rc.0
+	github.com/crossplane/crossplane/apis/v2 v2.4.0-rc.0
 	github.com/pkg/errors v0.9.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	k8s.io/api v0.36.1
@@ -98,3 +98,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.4.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/crossplane/crossplane-runtime/v2 => github.com/rossigee/crossplane-runtime/v2 v2.4.0-rc.0.0.20260708064937-d99a640775a8

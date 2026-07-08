@@ -88,7 +88,7 @@ func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Man
 	}
 
 	pc := &v1beta1.ProviderConfig{}
-	if err := c.Client.Get(ctx, types.NamespacedName{Name: pcRef.Name}, pc); err != nil {
+	if err := c.Get(ctx, types.NamespacedName{Namespace: "", Name: pcRef.Name}, pc); err != nil {
 		return nil, errors.Wrap(err, errGetProviderConfig)
 	}
 
