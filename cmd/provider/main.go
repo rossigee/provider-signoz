@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -38,6 +39,7 @@ import (
 	alertcontroller "github.com/rossigee/provider-signoz/internal/controller/alert"
 	channelcontroller "github.com/rossigee/provider-signoz/internal/controller/channel"
 	dashboardcontroller "github.com/rossigee/provider-signoz/internal/controller/dashboard"
+	"github.com/rossigee/provider-signoz/internal/tracing"
 	"github.com/rossigee/provider-signoz/internal/version"
 )
 
@@ -58,8 +60,13 @@ func main() {
 
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
+	shutdownTracing(context.Background())
+
 	zl := zap.New(zap.UseDevMode(*debug))
 	log := logging.NewLogrLogger(zl.WithName("provider-signoz"))
+
+	shutdownTracing := tracing.Init("provider-signoz")
+	defer shutdownTracing(context.Background())
 	if *debug {
 		// The controller-runtime runs with a no-op logger by default. It is
 		// *very* verbose even at info level, so we only provide it a real
