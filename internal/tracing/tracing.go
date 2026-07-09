@@ -22,7 +22,7 @@ const (
 	operationAttr    = "crossplane.operation"
 )
 
-var tracer trace.Tracer
+var tracer trace.Tracer = otel.Tracer("")
 var tp *sdktrace.TracerProvider
 
 func Init(serviceName string) func(context.Context) {
@@ -81,6 +81,9 @@ func Init(serviceName string) func(context.Context) {
 }
 
 func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	if tracer == nil {
+		return ctx, nil
+	}
 	return tracer.Start(ctx, name,
 		trace.WithAttributes(attrs...),
 	)
