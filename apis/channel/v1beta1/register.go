@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Crossplane Authors.
+Copyright 2025 The Crossplane Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,5 +16,16 @@ limitations under the License.
 
 package v1beta1
 
-// This file contains register functions that are auto-generated.
-// The metadata and init functions are defined in types.go
+import (
+	"reflect"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
+
+// SlackConfig type metadata.
+var (
+	SlackConfigKind             = reflect.TypeOf(SlackConfig{}).Name()
+	SlackConfigGroupKind        = schema.GroupKind{Group: Group, Kind: SlackConfigKind}
+	SlackConfigKindAPIVersion   = SlackConfigKind + "." + SchemeGroupVersion.String()
+	SlackConfigGroupVersionKind = SchemeGroupVersion.WithKind(SlackConfigKind)
+)

@@ -25,11 +25,11 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	"github.com/pkg/errors"
 	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
-	"github.com/rossigee/provider-signoz/apis/v1beta1"
+	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"time"
 )
 

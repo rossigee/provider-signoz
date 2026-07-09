@@ -21,7 +21,8 @@ limitations under the License.
 package v1beta1
 
 import (
-	"github.com/crossplane/crossplane/apis/v2/core/v2"
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
+
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -156,14 +157,14 @@ func (in *AlertParameters) DeepCopyInto(out *AlertParameters) {
 	}
 	if in.ChannelIDsRef != nil {
 		in, out := &in.ChannelIDsRef, &out.ChannelIDsRef
-		*out = make([]v2.Reference, len(*in))
+		*out = make([]xpv1.Reference, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
 	if in.ChannelIDsSelector != nil {
 		in, out := &in.ChannelIDsSelector, &out.ChannelIDsSelector
-		*out = new(v2.Selector)
+		*out = new(xpv1.Selector)
 		(*in).DeepCopyInto(*out)
 	}
 }

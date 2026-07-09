@@ -18,26 +18,27 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"time"
+
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/rossigee/provider-signoz/apis"
-	"github.com/rossigee/provider-signoz/internal/controller/alert"
-	"github.com/rossigee/provider-signoz/internal/controller/channel"
-	"github.com/rossigee/provider-signoz/internal/controller/dashboard"
+	alertcontroller "github.com/rossigee/provider-signoz/internal/controller/alert"
+	channelcontroller "github.com/rossigee/provider-signoz/internal/controller/channel"
+	dashboardcontroller "github.com/rossigee/provider-signoz/internal/controller/dashboard"
 	"github.com/rossigee/provider-signoz/internal/tracing"
 	"github.com/rossigee/provider-signoz/internal/version"
 	"gopkg.in/alecthomas/kingpin.v2"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
-	"os"
-	"path/filepath"
-	"runtime"
-	"sigs.k8s.io/controller-runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"time"
 )
 
 func main() {

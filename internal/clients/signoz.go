@@ -21,16 +21,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
-	"github.com/crossplane/crossplane/apis/v2/core/v2"
-	"github.com/pkg/errors"
-	"github.com/rossigee/provider-signoz/apis/v1beta1"
 	"io"
-	"k8s.io/apimachinery/pkg/types"
 	"net/http"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 	"strings"
 	"time"
+
+	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
+	"github.com/pkg/errors"
+	"github.com/rossigee/provider-signoz/apis/v1beta1"
+
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -90,7 +92,7 @@ func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Man
 		return nil, errors.Wrap(err, errGetProviderConfig)
 	}
 
-	// Use no-op tracker for v2.0.0 compatibility
+	// Use no-op tracker for xpv1.0.0 compatibility
 	t := resource.ModernTrackerFn(func(ctx context.Context, mg resource.ModernManaged) error { return nil })
 	if err := t.Track(ctx, mg.(resource.ModernManaged)); err != nil {
 		return nil, errors.Wrap(err, errTrackUsage)
