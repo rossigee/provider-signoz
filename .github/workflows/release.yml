@@ -17,7 +17,7 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
           fetch-depth: 0
@@ -25,6 +25,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_REQUIRED_VERSION }}
+          enable-cache: true
+          cache-dependency-path: |
+            go.sum
+            go.mod
 
       - name: Extract version from tag
         id: version
@@ -59,14 +63,14 @@ jobs:
 
       - name: Build provider binary
         run: |
-          mkdir -p _output/bin/linux_amd64
+          mkdir -p bin/linux_amd64
           VERSION="${{ steps.version.outputs.version }}" \
-          go build -v -o _output/bin/linux_amd64/provider \
+          go build -v -o bin/linux_amd64/provider \
             -ldflags "-X github.com/rossigee/provider-signoz/internal/version.Version=${{ steps.version.outputs.version }}" \
             ./cmd/provider
 
       - name: Build and push Docker image (amd64)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./cluster/images/provider-signoz/Dockerfile
