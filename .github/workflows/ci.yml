@@ -210,9 +210,6 @@ jobs:
           make build
           echo "✅ Binary and Docker image build successful"
 
-          # Tag Docker image for CLI access
-          docker tag docker.io/build-30391364/provider-signoz-amd64 build-30391364/provider-signoz-amd64
-
           # Build Crossplane package locally (without push)
           make xpkg.build
           echo "✅ Crossplane package build successful"
