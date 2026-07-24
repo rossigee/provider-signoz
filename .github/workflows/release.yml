@@ -83,7 +83,7 @@ jobs:
           push: true
 
       - name: Create GitHub Release
-        uses: ncipollo/release-action@v2
+        uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
