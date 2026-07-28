@@ -23,17 +23,17 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/rossigee/provider-signoz/apis"
+	"github.com/rossigee/provider-signoz/internal/controller"
+	"github.com/rossigee/provider-signoz/internal/tracing"
+	"github.com/rossigee/provider-signoz/internal/version"
+	xpcontroller "github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
-	"github.com/rossigee/provider-signoz/apis"
-	alertcontroller "github.com/rossigee/provider-signoz/internal/controller/alert"
-	channelcontroller "github.com/rossigee/provider-signoz/internal/controller/channel"
-	dashboardcontroller "github.com/rossigee/provider-signoz/internal/controller/dashboard"
-	"github.com/rossigee/provider-signoz/internal/tracing"
-	"github.com/rossigee/provider-signoz/internal/version"
 	"gopkg.in/alecthomas/kingpin.v2"
+	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -66,11 +66,8 @@ func main() {
 
 	// Always set controller-runtime logger to avoid "log.SetLogger was never called"
 	// stack traces from priorityqueue etc. Use V(1) in non-debug to keep noise low.
-	if *debug {
-		ctrl.SetLogger(zl)
-	} else {
-		ctrl.SetLogger(zl.V(1))
-	}
+	// Always set the controller-runtime logger to prevent logging errors
+	ctrl.SetLogger(zl)
 
 	// Log startup information with build and configuration details
 	log.Info("Provider starting up",
@@ -91,6 +88,16 @@ func main() {
 		"poll-interval", pollInterval.String(),
 		"max-reconcile-rate", *maxReconcileRate)
 
+	s := apimachineryruntime.NewScheme()
+	if err := scheme.AddToScheme(s); err != nil {
+		log.Info("Cannot add k8s types to scheme", "error", err)
+		os.Exit(1)
+	}
+	if err := apis.AddToScheme(s); err != nil {
+		log.Info("Cannot add SigNoz APIs to scheme", "error", err)
+		os.Exit(1)
+	}
+
 	cfg, err := ctrl.GetConfig()
 	if err != nil {
 		log.Info("Cannot get config", "error", err)
@@ -109,6 +116,7 @@ func main() {
 		// hundreds of reconciles per second and ~200rps to the API
 		// server. Switching to Leases only and longer leases appears to
 		// alleviate this.
+		Scheme:                           s,
 		LeaderElection:             *leaderElection,
 		LeaderElectionID:           "crossplane-leader-election-provider-signoz",
 		LeaderElectionResourceLock: resourcelock.LeasesResourceLock,
@@ -121,7 +129,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	o := controller.Options{
+	o := xpcontroller.Options{
 		Logger:                  log,
 		MaxConcurrentReconciles: *maxReconcileRate,
 		PollInterval:            *pollInterval,
@@ -133,26 +141,7 @@ func main() {
 		log.Info("Management policies feature enabled")
 	}
 
-	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
-		log.Info("Cannot add SigNoz APIs to scheme", "error", err)
-		os.Exit(1)
-	}
-
-	// Setup v2 native controllers (v1beta1 namespaced resources)
-	if err := dashboardcontroller.Setup(mgr, o); err != nil {
-		log.Info("Cannot setup dashboard controller", "error", err)
-		os.Exit(1)
-	}
-
-	if err := alertcontroller.Setup(mgr, o); err != nil {
-		log.Info("Cannot setup alert controller", "error", err)
-		os.Exit(1)
-	}
-
-	if err := channelcontroller.Setup(mgr, o); err != nil {
-		log.Info("Cannot setup channel controller", "error", err)
-		os.Exit(1)
-	}
+	kingpin.FatalIfError(controller.Setup(mgr, o), "Cannot setup controllers")
 
 	kingpin.FatalIfError(mgr.AddHealthzCheck("healthz", healthz.Ping), "Cannot add health check")
 	kingpin.FatalIfError(mgr.AddReadyzCheck("readyz", healthz.Ping), "Cannot add ready check")

@@ -3,7 +3,7 @@ module github.com/rossigee/provider-signoz
 go 1.26.5
 
 require (
-	github.com/crossplane/crossplane-runtime/v2 v2.4.0-rc.0
+	github.com/crossplane/crossplane-runtime/v2 v2.3.3
 	github.com/crossplane/crossplane/apis/v2 v2.4.0-rc.0
 	github.com/pkg/errors v0.9.1
 	go.opentelemetry.io/otel v1.44.0
