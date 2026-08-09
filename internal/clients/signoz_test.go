@@ -67,8 +67,8 @@ func TestClient_CreateDashboard(t *testing.T) {
 			t.Errorf("Expected POST method, got %s", r.Method)
 		}
 
-		if r.URL.Path != "/api/v1/dashboards" {
-			t.Errorf("Expected path /api/v1/dashboards, got %s", r.URL.Path)
+		if r.URL.Path != "/api/v2/dashboards" {
+			t.Errorf("Expected path /api/v2/dashboards, got %s", r.URL.Path)
 		}
 
 		if r.Header.Get("Content-Type") != "application/json" {
@@ -131,8 +131,8 @@ func TestClient_GetDashboard(t *testing.T) {
 			t.Errorf("Expected GET method, got %s", r.Method)
 		}
 
-		if r.URL.Path != "/api/v1/dashboards/dashboard-123" {
-			t.Errorf("Expected path /api/v1/dashboards/dashboard-123, got %s", r.URL.Path)
+		if r.URL.Path != "/api/v2/dashboards/dashboard-123" {
+			t.Errorf("Expected path /api/v2/dashboards/dashboard-123, got %s", r.URL.Path)
 		}
 
 		response := DashboardResponse{
@@ -176,8 +176,8 @@ func TestClient_DeleteDashboard(t *testing.T) {
 			t.Errorf("Expected DELETE method, got %s", r.Method)
 		}
 
-		if r.URL.Path != "/api/v1/dashboards/dashboard-123" {
-			t.Errorf("Expected path /api/v1/dashboards/dashboard-123, got %s", r.URL.Path)
+		if r.URL.Path != "/api/v2/dashboards/dashboard-123" {
+			t.Errorf("Expected path /api/v2/dashboards/dashboard-123, got %s", r.URL.Path)
 		}
 
 		w.WriteHeader(http.StatusNoContent)
@@ -269,10 +269,9 @@ func TestClient_CreateChannel(t *testing.T) {
 		response := ChannelResponse{
 			Status: "success",
 			Data: &ChannelData{
-				ID:        1,
+				ID:        "1",
 				Name:      "Test Channel",
 				Type:      "slack",
-				Data:      map[string]interface{}{"channel": "#test"},
 				CreatedAt: "2023-01-01T00:00:00Z",
 				UpdatedAt: "2023-01-01T00:00:00Z",
 			},
@@ -293,7 +292,6 @@ func TestClient_CreateChannel(t *testing.T) {
 	channel := &ChannelData{
 		Name: "Test Channel",
 		Type: "slack",
-		Data: map[string]interface{}{"channel": "#test"},
 	}
 
 	result, err := client.CreateChannel(context.Background(), channel)
@@ -301,8 +299,8 @@ func TestClient_CreateChannel(t *testing.T) {
 		t.Fatalf("CreateChannel failed: %v", err)
 	}
 
-	if result.ID != 1 {
-		t.Errorf("Expected ID 1, got %d", result.ID)
+	if result.ID != "1" {
+		t.Errorf("Expected ID 1, got %s", result.ID)
 	}
 
 	if result.Name != "Test Channel" {

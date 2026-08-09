@@ -106,7 +106,7 @@ func TestRemoveDuplicates(t *testing.T) {
 func TestConvertCondition(t *testing.T) {
 	condition := v1beta1.RuleCondition{
 		CompositeQuery: v1beta1.CompositeQuery{
-			QueryType: 1, // PromQL
+			QueryType: "1", // PromQL
 			PromQL: []v1beta1.AlertPromQuery{
 				{
 					Query:    "up == 0",
@@ -123,21 +123,21 @@ func TestConvertCondition(t *testing.T) {
 
 	result := convertCondition(condition)
 
-	if result["compareOp"] != "VALUE" {
-		t.Errorf("Expected compareOp 'VALUE', got %v", result["compareOp"])
+	if result["op"] != "VALUE" {
+		t.Errorf("Expected op 'VALUE', got %v", result["op"])
 	}
 
 	if result["target"] != 1.0 {
 		t.Errorf("Expected target 1.0, got %v", result["target"])
 	}
 
-	if result["matchType"] != 1 {
+	if result["matchType"] != "1" {
 		t.Errorf("Expected matchType 1, got %v", result["matchType"])
 	}
 
 	compositeQuery := result["compositeQuery"].(map[string]interface{})
-	if compositeQuery["queryType"] != 1 {
-		t.Errorf("Expected queryType 1, got %v", compositeQuery["queryType"])
+	if compositeQuery["queryType"] != "promql" {
+		t.Errorf("Expected queryType promql, got %v", compositeQuery["queryType"])
 	}
 }
 

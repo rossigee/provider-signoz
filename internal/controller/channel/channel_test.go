@@ -50,16 +50,21 @@ func TestConvertToChannelData(t *testing.T) {
 		t.Errorf("Expected type 'slack', got %s", result.Type)
 	}
 
-	if result.Data["channel"] != "#test" {
-		t.Errorf("Expected channel '#test', got %v", result.Data["channel"])
+	if len(result.SlackConfigs) != 1 {
+		t.Fatalf("Expected 1 slack config, got %d", len(result.SlackConfigs))
 	}
 
-	if result.Data["webhook_url"] != "https://hooks.slack.com/test" {
-		t.Errorf("Expected webhook_url 'https://hooks.slack.com/test', got %v", result.Data["webhook_url"])
+	slackData := result.SlackConfigs[0].(map[string]interface{})
+	if slackData["channel"] != "#test" {
+		t.Errorf("Expected channel '#test', got %v", slackData["channel"])
 	}
 
-	if result.Data["title"] != "Test Alert" {
-		t.Errorf("Expected title 'Test Alert', got %v", result.Data["title"])
+	if slackData["webhook_url"] != "https://hooks.slack.com/test" {
+		t.Errorf("Expected webhook_url 'https://hooks.slack.com/test', got %v", slackData["webhook_url"])
+	}
+
+	if slackData["title"] != "Test Alert" {
+		t.Errorf("Expected title 'Test Alert', got %v", slackData["title"])
 	}
 }
 

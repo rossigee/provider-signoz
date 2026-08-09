@@ -29,7 +29,7 @@ func TestConvertWidgets(t *testing.T) {
 			Title:     "Test Widget",
 			PanelType: "graph",
 			Query: v1beta1.Query{
-				QueryType: 1,
+				QueryType: "1",
 				PromQL: []v1beta1.PromQuery{
 					{
 						Query: "up",
@@ -61,7 +61,7 @@ func TestConvertWidgets(t *testing.T) {
 	}
 
 	query := widget["query"].(map[string]interface{})
-	if query["queryType"] != 1 {
+	if query["queryType"] != "1" {
 		t.Errorf("Expected query type 1, got %v", query["queryType"])
 	}
 }

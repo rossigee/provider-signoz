@@ -372,7 +372,7 @@ func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
 		result["target"] = *condition.Target
 	}
 	if condition.MatchType != nil {
-		result["matchType"] = *condition.MatchType
+		result["matchType"] = fmt.Sprintf("%d", *condition.MatchType)
 	}
 
 	return result
