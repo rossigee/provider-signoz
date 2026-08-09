@@ -19,6 +19,8 @@ package clients
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,6 +37,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// GenerateExternalName generates a deterministic UUID-v7 from namespace and name
+func GenerateExternalName(namespace, name string) string {
+	seed := fmt.Sprintf("provider-signoz/v1/%s/%s", namespace, name)
+	h := sha256.New()
+	h.Write([]byte(seed))
+	hash := h.Sum(nil)
+
+	b := [16]byte{}
+	copy(b[:6], hash[:6])
+	b[6] = (hash[6] & 0x0f) | 0x70 // version 7
+	b[7] = hash[7]
+	b[8] = (hash[8] & 0x3f) | 0x80 // variant
+	copy(b[9:], hash[9:16])
+
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
 const (
 	errNoProviderConfig     = "no providerConfig specified"
 	errGetProviderConfig    = "cannot get providerConfig"
@@ -45,8 +64,9 @@ const (
 
 // Config holds SigNoz client configuration
 type Config struct {
-	BaseURL string
-	APIKey  string
+	BaseURL               string
+	APIKey                string
+	InsecureSkipTLSVerify bool
 }
 
 // Credentials holds SigNoz authentication credentials
@@ -62,10 +82,14 @@ type Client struct {
 
 // NewClient creates a new SigNoz API client
 func NewClient(cfg Config) *Client {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureSkipTLSVerify}, //nolint:gosec // opt-in via ProviderConfig
+	}
 	return &Client{
 		config: cfg,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			Transport: transport,
 		},
 	}
 }
@@ -73,12 +97,24 @@ func NewClient(cfg Config) *Client {
 // GetConfig extracts SigNoz configuration from a ProviderConfig
 func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Managed) (*Config, error) {
 	// Get provider config reference from the managed resource's ResourceSpec
-	var pcRef *xpv1.Reference
+	var pcRef *xpv1.ProviderConfigReference
 
-	// Type assert to extract the ProviderConfigReference from the managed resource
+	// Type assert to extract the ProviderConfigReference from the managed resource.
+	// The forked crossplane-runtime defines TypedProviderConfigReferencer (new style)
+	// which returns *ProviderConfigReference instead of *Reference.
 	switch mr := mg.(type) {
-	case interface{ GetProviderConfigReference() *xpv1.Reference }:
+	case resource.TypedProviderConfigReferencer:
 		pcRef = mr.GetProviderConfigReference()
+	case interface {
+		GetProviderConfigReference() *xpv1.ProviderConfigReference
+	}:
+		pcRef = mr.GetProviderConfigReference()
+	case interface{ GetProviderConfigReference() *xpv1.Reference }:
+		// Legacy fallback for older CRDs returning *Reference
+		r := mr.GetProviderConfigReference()
+		if r != nil {
+			pcRef = &xpv1.ProviderConfigReference{Name: r.Name}
+		}
 	default:
 		return nil, errors.New(errGetProviderConfig)
 	}
@@ -88,8 +124,17 @@ func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Man
 	}
 
 	pc := &v1beta1.ProviderConfig{}
-	if err := c.Get(ctx, types.NamespacedName{Namespace: "", Name: pcRef.Name}, pc); err != nil {
-		return nil, errors.Wrap(err, errGetProviderConfig)
+	// Try cluster-scoped first (newer Crossplane), then namespace-scoped
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("DEBUG GetConfig: attempting cluster-scoped ProviderConfig lookup", "name", pcRef.Name, "namespace", "")
+	if err := c.Get(ctx, types.NamespacedName{Name: pcRef.Name}, pc); err != nil {
+		logger.V(1).Info("DEBUG GetConfig: cluster-scoped lookup failed, trying namespace-scoped", "error", err, "namespace", mg.GetNamespace())
+		// If not found cluster-scoped, try with the managed resource's namespace
+		if err := c.Get(ctx, types.NamespacedName{Namespace: mg.GetNamespace(), Name: pcRef.Name}, pc); err != nil {
+			logger.V(1).Info("DEBUG GetConfig: namespace-scoped lookup also failed", "error", err)
+			return nil, errors.Wrap(err, errGetProviderConfig)
+		}
+		logger.V(1).Info("DEBUG GetConfig: namespace-scoped lookup succeeded")
 	}
 
 	// Use no-op tracker for xpv1.0.0 compatibility
@@ -114,9 +159,15 @@ func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Man
 		endpoint = *pc.Spec.Endpoint
 	}
 
+	skipTLS := false
+	if pc.Spec.InsecureSkipTLSVerify != nil {
+		skipTLS = *pc.Spec.InsecureSkipTLSVerify
+	}
+
 	return &Config{
-		BaseURL: strings.TrimSuffix(endpoint, "/"),
-		APIKey:  creds.APIKey,
+		BaseURL:               strings.TrimSuffix(endpoint, "/"),
+		APIKey:                creds.APIKey,
+		InsecureSkipTLSVerify: skipTLS,
 	}, nil
 }
 
@@ -196,7 +247,7 @@ func parseResponse(resp *http.Response, v interface{}) error {
 
 // Dashboard API methods
 
-// DashboardData represents a dashboard in SigNoz
+// DashboardData represents a dashboard in SigNoz (V1 format - deprecated)
 type DashboardData struct {
 	ID          string                 `json:"id,omitempty"`
 	UUID        string                 `json:"uuid,omitempty"`
@@ -208,6 +259,50 @@ type DashboardData struct {
 	Variables   map[string]interface{} `json:"variables,omitempty"`
 	CreatedAt   string                 `json:"created_at,omitempty"`
 	UpdatedAt   string                 `json:"updated_at,omitempty"`
+}
+
+// DashboardTag represents a tag in V2 format
+type DashboardTag struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// DashboardV2Spec represents the spec section of a V2 dashboard
+type DashboardV2Spec struct {
+	Display   *DashboardV2Display    `json:"display,omitempty"`
+	Layouts   []interface{}          `json:"layouts,omitempty"`
+	Panels    map[string]interface{} `json:"panels,omitempty"`
+	Variables []interface{}          `json:"variables,omitempty"`
+}
+
+// DashboardV2Display represents the display section of a V2 dashboard
+type DashboardV2Display struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// DashboardV2Data represents the full V2 dashboard response including ID
+type DashboardV2Data struct {
+	Name          string          `json:"name,omitempty"`
+	ID            string          `json:"id,omitempty"`
+	UUID          string          `json:"uuid,omitempty"`
+	SchemaVersion string          `json:"schemaVersion,omitempty"`
+	Tags          []DashboardTag  `json:"tags,omitempty"`
+	Spec          DashboardV2Spec `json:"spec"`
+	CreatedAt     string          `json:"created_at,omitempty"`
+	UpdatedAt     string          `json:"updated_at,omitempty"`
+}
+
+// DashboardV2Response wraps V2 dashboard API responses
+type DashboardV2Response struct {
+	Status string           `json:"status"`
+	Data   *DashboardV2Data `json:"data"`
+}
+
+// ListDashboardsV2Response wraps list dashboards V2 response
+type ListDashboardsV2Response struct {
+	Status string             `json:"status"`
+	Data   []*DashboardV2Data `json:"data"`
 }
 
 // DashboardResponse wraps dashboard API responses
@@ -224,7 +319,7 @@ type ListDashboardsResponse struct {
 
 // CreateDashboard creates a new dashboard
 func (c *Client) CreateDashboard(ctx context.Context, dashboard *DashboardData) (*DashboardData, error) {
-	resp, err := c.doRequest(ctx, http.MethodPost, "/api/v1/dashboards", dashboard)
+	resp, err := c.doRequest(ctx, http.MethodPost, "/api/v2/dashboards", dashboard)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +334,7 @@ func (c *Client) CreateDashboard(ctx context.Context, dashboard *DashboardData) 
 
 // GetDashboard retrieves a dashboard by ID
 func (c *Client) GetDashboard(ctx context.Context, id string) (*DashboardData, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/api/v1/dashboards/%s", id), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/api/v2/dashboards/%s", id), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +349,7 @@ func (c *Client) GetDashboard(ctx context.Context, id string) (*DashboardData, e
 
 // UpdateDashboard updates an existing dashboard
 func (c *Client) UpdateDashboard(ctx context.Context, id string, dashboard *DashboardData) (*DashboardData, error) {
-	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("/api/v1/dashboards/%s", id), dashboard)
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("/api/v2/dashboards/%s", id), dashboard)
 	if err != nil {
 		return nil, err
 	}
@@ -269,18 +364,78 @@ func (c *Client) UpdateDashboard(ctx context.Context, id string, dashboard *Dash
 
 // DeleteDashboard deletes a dashboard
 func (c *Client) DeleteDashboard(ctx context.Context, id string) error {
-	_, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("/api/v1/dashboards/%s", id), nil)
+	_, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("/api/v2/dashboards/%s", id), nil)
 	return err
 }
 
 // ListDashboards lists all dashboards
 func (c *Client) ListDashboards(ctx context.Context) ([]*DashboardData, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/api/v1/dashboards", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api/v2/dashboards", nil)
 	if err != nil {
 		return nil, err
 	}
 
 	var result ListDashboardsResponse
+	if err := parseResponse(resp, &result); err != nil {
+		return nil, err
+	}
+
+	return result.Data, nil
+}
+
+// CreateDashboardV2 creates a new dashboard using V2 API
+func (c *Client) CreateDashboardV2(ctx context.Context, dashboard *DashboardV2Data) (*DashboardV2Data, error) {
+	resp, err := c.doRequest(ctx, http.MethodPost, "/api/v2/dashboards", dashboard)
+	if err != nil {
+		return nil, err
+	}
+
+	var result DashboardV2Response
+	if err := parseResponse(resp, &result); err != nil {
+		return nil, err
+	}
+
+	return result.Data, nil
+}
+
+// GetDashboardV2 retrieves a dashboard by ID using V2 API
+func (c *Client) GetDashboardV2(ctx context.Context, id string) (*DashboardV2Data, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/api/v2/dashboards/%s", id), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result DashboardV2Response
+	if err := parseResponse(resp, &result); err != nil {
+		return nil, err
+	}
+
+	return result.Data, nil
+}
+
+// UpdateDashboardV2 updates an existing dashboard using V2 API
+func (c *Client) UpdateDashboardV2(ctx context.Context, id string, dashboard *DashboardV2Data) (*DashboardV2Data, error) {
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("/api/v2/dashboards/%s", id), dashboard)
+	if err != nil {
+		return nil, err
+	}
+
+	var result DashboardV2Response
+	if err := parseResponse(resp, &result); err != nil {
+		return nil, err
+	}
+
+	return result.Data, nil
+}
+
+// ListDashboardsV2 lists all dashboards using V2 API
+func (c *Client) ListDashboardsV2(ctx context.Context) ([]*DashboardV2Data, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api/v2/dashboards", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var result ListDashboardsV2Response
 	if err := parseResponse(resp, &result); err != nil {
 		return nil, err
 	}
@@ -303,6 +458,7 @@ type RuleData struct {
 	Annotations       map[string]string      `json:"annotations,omitempty"`
 	PreferredChannels []string               `json:"preferredChannels,omitempty"`
 	Disabled          bool                   `json:"disabled"`
+	Severity          string                 `json:"severity,omitempty"`
 	Version           string                 `json:"version,omitempty"`
 	CreatedAt         string                 `json:"created_at,omitempty"`
 	UpdatedAt         string                 `json:"updated_at,omitempty"`
@@ -391,12 +547,19 @@ func (c *Client) ListRules(ctx context.Context) ([]*RuleData, error) {
 
 // ChannelData represents a notification channel in SigNoz
 type ChannelData struct {
-	ID        int                    `json:"id,omitempty"`
-	CreatedAt string                 `json:"created_at,omitempty"`
-	UpdatedAt string                 `json:"updated_at,omitempty"`
-	Name      string                 `json:"name"`
-	Type      string                 `json:"type"`
-	Data      map[string]interface{} `json:"data"`
+	ID               string        `json:"id,omitempty"`
+	CreatedAt        string        `json:"createdAt,omitempty"`
+	UpdatedAt        string        `json:"updatedAt,omitempty"`
+	Name             string        `json:"name"`
+	Type             string        `json:"type"`
+	Data             string        `json:"data,omitempty"`
+	WebhookConfigs   []interface{} `json:"webhook_configs,omitempty"`
+	SlackConfigs     []interface{} `json:"slack_configs,omitempty"`
+	EmailConfigs     []interface{} `json:"email_configs,omitempty"`
+	OpsGenieConfigs  []interface{} `json:"opsgenie_configs,omitempty"`
+	MSTeamsConfigs   []interface{} `json:"msteams_configs,omitempty"`
+	SNSConfigs       []interface{} `json:"sns_configs,omitempty"`
+	PagerDutyConfigs []interface{} `json:"pagerduty_configs,omitempty"`
 }
 
 // ChannelResponse wraps channel API responses

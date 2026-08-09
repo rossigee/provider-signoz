@@ -18,11 +18,16 @@ package alert
 
 import (
 	"context"
+	"fmt"
+	"time"
+
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rossigee/provider-signoz/apis/alert/v1beta1"
 	channelv1beta1 "github.com/rossigee/provider-signoz/apis/channel/v1beta1"
@@ -32,7 +37,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"time"
 )
 
 const (
@@ -132,6 +136,25 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	// Get the alert ID from the external-name annotation
 	alertID := cr.GetAnnotations()["crossplane.io/external-name"]
 	if alertID == "" {
+		// Generate deterministic UUID-v7 for new resources
+		alertID = clients.GenerateExternalName(cr.GetNamespace(), cr.GetName())
+		if cr.GetAnnotations() == nil {
+			cr.SetAnnotations(make(map[string]string))
+		}
+		cr.GetAnnotations()["crossplane.io/external-name"] = alertID
+		return managed.ExternalObservation{
+			ResourceExists: false,
+		}, nil
+	}
+
+	// Validate external-name is a valid UUID - if not, generate a new one
+	if _, err := uuid.Parse(alertID); err != nil {
+		// Not a valid UUID, generate a new one
+		alertID = clients.GenerateExternalName(cr.GetNamespace(), cr.GetName())
+		if cr.GetAnnotations() == nil {
+			cr.SetAnnotations(make(map[string]string))
+		}
+		cr.GetAnnotations()["crossplane.io/external-name"] = alertID
 		return managed.ExternalObservation{
 			ResourceExists: false,
 		}, nil
@@ -163,6 +186,9 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		}
 	}
 
+	// Set Ready condition since the resource exists
+	cr.Status.SetConditions(xpv1.Available())
+
 	// Resolve channel references and update status
 	if err := c.resolveChannelReferences(ctx, cr); err != nil {
 		return managed.ExternalObservation{}, errors.Wrap(err, errResolveRefs)
@@ -191,6 +217,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	ruleData := &clients.RuleData{
 		AlertName:         cr.Spec.ForProvider.AlertName,
 		AlertType:         cr.Spec.ForProvider.AlertType,
+		RuleType:          "threshold_rule",
 		EvalWindow:        cr.Spec.ForProvider.EvalWindow,
 		Frequency:         cr.Spec.ForProvider.Frequency,
 		Condition:         convertCondition(cr.Spec.ForProvider.Condition),
@@ -198,6 +225,8 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		Annotations:       cr.Spec.ForProvider.Annotations,
 		PreferredChannels: cr.Status.AtProvider.ResolvedChannelIDs,
 		Disabled:          cr.Spec.ForProvider.Disabled,
+		Severity:          cr.Spec.ForProvider.Severity,
+		Version:           "v5",
 	}
 
 	created, err := c.service.CreateRule(ctx, ruleData)
@@ -233,6 +262,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	ruleData := &clients.RuleData{
 		AlertName:         cr.Spec.ForProvider.AlertName,
 		AlertType:         cr.Spec.ForProvider.AlertType,
+		RuleType:          "threshold_rule",
 		EvalWindow:        cr.Spec.ForProvider.EvalWindow,
 		Frequency:         cr.Spec.ForProvider.Frequency,
 		Condition:         convertCondition(cr.Spec.ForProvider.Condition),
@@ -240,6 +270,8 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		Annotations:       cr.Spec.ForProvider.Annotations,
 		PreferredChannels: cr.Status.AtProvider.ResolvedChannelIDs,
 		Disabled:          cr.Spec.ForProvider.Disabled,
+		Severity:          cr.Spec.ForProvider.Severity,
+		Version:           "v5",
 	}
 
 	_, err := c.service.UpdateRule(ctx, alertID, ruleData)
@@ -326,11 +358,15 @@ func mapsEqual(a, b map[string]string) bool {
 
 func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
 	result := map[string]interface{}{
-		"compositeQuery": convertCompositeQuery(condition.CompositeQuery),
+		"compositeQuery":    convertCompositeQuery(condition.CompositeQuery),
+		"op":                "1",
+		"target":            0,
+		"matchType":         "1",
+		"selectedQueryName": "A",
 	}
 
 	if condition.CompareOp != "" {
-		result["compareOp"] = condition.CompareOp
+		result["op"] = condition.CompareOp
 	}
 	if condition.Target != nil {
 		result["target"] = *condition.Target
@@ -343,40 +379,64 @@ func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
 }
 
 func convertCompositeQuery(query v1beta1.CompositeQuery) map[string]interface{} {
+	// Determine queryType based on available queries
+	queryType := "builder"
+	if len(query.PromQL) > 0 {
+		queryType = "promql"
+	} else if len(query.ClickHouse) > 0 {
+		queryType = "clickhouse"
+	}
+
 	result := map[string]interface{}{
-		"queryType": query.QueryType,
+		"queryType": queryType,
+		"panelType": "graph",
+		"unit":      "",
 	}
 
 	if len(query.PromQL) > 0 {
-		promQueries := make([]interface{}, len(query.PromQL))
+		queries := make([]interface{}, len(query.PromQL))
 		for i, pq := range query.PromQL {
-			promQuery := map[string]interface{}{
-				"query":    pq.Query,
-				"name":     pq.Name,
-				"legend":   pq.Legend,
-				"disabled": pq.Disabled,
+			name := pq.Name
+			if name == "" {
+				name = fmt.Sprintf("A%d", i)
 			}
-			promQueries[i] = promQuery
+			promQuery := map[string]interface{}{
+				"type": "promql",
+				"spec": map[string]interface{}{
+					"query":    pq.Query,
+					"legend":   pq.Legend,
+					"name":     name,
+					"disabled": pq.Disabled,
+				},
+			}
+			queries[i] = promQuery
 		}
-		result["promQL"] = promQueries
+		result["queries"] = queries
 	}
 
 	if len(query.ClickHouse) > 0 {
-		chQueries := make([]interface{}, len(query.ClickHouse))
+		queries := make([]interface{}, len(query.ClickHouse))
 		for i, chq := range query.ClickHouse {
-			chQuery := map[string]interface{}{
-				"query":    chq.Query,
-				"name":     chq.Name,
-				"legend":   chq.Legend,
-				"disabled": chq.Disabled,
+			name := chq.Name
+			if name == "" {
+				name = fmt.Sprintf("A%d", i)
 			}
-			chQueries[i] = chQuery
+			chQuery := map[string]interface{}{
+				"type": "clickhouse_sql",
+				"spec": map[string]interface{}{
+					"query":    chq.Query,
+					"legend":   chq.Legend,
+					"name":     name,
+					"disabled": chq.Disabled,
+				},
+			}
+			queries[i] = chQuery
 		}
-		result["clickHouse"] = chQueries
+		result["queries"] = queries
 	}
 
 	if query.Builder != nil {
-		result["builder"] = convertQueryBuilder(*query.Builder)
+		result["queries"] = []interface{}{convertQueryBuilder(*query.Builder)}
 	}
 
 	if query.Expression != "" {
@@ -476,12 +536,15 @@ func (c *external) resolveChannelReferences(ctx context.Context, cr *v1beta1.Ale
 		if ref.Name != "" {
 			// Get the NotificationChannel resource
 			channel := &channelv1beta1.NotificationChannel{}
-			if err := c.kube.Get(ctx, types.NamespacedName{Name: ref.Name}, channel); err != nil {
+			if err := c.kube.Get(ctx, types.NamespacedName{Namespace: cr.GetNamespace(), Name: ref.Name}, channel); err != nil {
 				return errors.Wrapf(err, "cannot get notification channel %s", ref.Name)
 			}
 
-			// Get the channel ID from the external-name annotation
-			if channelID := channel.GetAnnotations()["crossplane.io/external-name"]; channelID != "" {
+			// SigNoz rules API validates preferredChannels against the channel's
+			// display name, not its UUID.
+			if name := channel.Spec.ForProvider.Name; name != "" {
+				channelIDs = append(channelIDs, name)
+			} else if channelID := channel.GetAnnotations()["crossplane.io/external-name"]; channelID != "" {
 				channelIDs = append(channelIDs, channelID)
 			}
 		}
@@ -492,7 +555,9 @@ func (c *external) resolveChannelReferences(ctx context.Context, cr *v1beta1.Ale
 		selector := cr.Spec.ForProvider.ChannelIDsSelector
 		channelList := &channelv1beta1.NotificationChannelList{}
 
-		listOptions := []client.ListOption{}
+		listOptions := []client.ListOption{
+			client.InNamespace(cr.GetNamespace()),
+		}
 		if selector.MatchLabels != nil {
 			listOptions = append(listOptions, client.MatchingLabels(selector.MatchLabels))
 		}
@@ -502,7 +567,9 @@ func (c *external) resolveChannelReferences(ctx context.Context, cr *v1beta1.Ale
 		}
 
 		for _, channel := range channelList.Items {
-			if channelID := channel.GetAnnotations()["crossplane.io/external-name"]; channelID != "" {
+			if name := channel.Spec.ForProvider.Name; name != "" {
+				channelIDs = append(channelIDs, name)
+			} else if channelID := channel.GetAnnotations()["crossplane.io/external-name"]; channelID != "" {
 				channelIDs = append(channelIDs, channelID)
 			}
 		}

@@ -17,4 +17,4 @@ metadata:
     maintainer: "Ross Golder <ross@golder.org>"
 spec:
   controller:
-    image: ghcr.io/rossigee/provider-signoz:v0.2.0
+    image: ghcr.io/rossigee/provider-signoz:v0.3.60

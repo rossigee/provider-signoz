@@ -18,11 +18,16 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/pkg/errors"
 	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
 	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
@@ -30,7 +35,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"time"
+	"github.com/google/uuid"
 )
 
 const (
@@ -123,13 +128,33 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	// Get the dashboard ID from the external-name annotation
 	dashboardID := cr.GetAnnotations()["crossplane.io/external-name"]
+	// Generate new UUID if external-name is empty or not a valid UUID
 	if dashboardID == "" {
+		// Generate deterministic UUID-v7 for new resources
+		dashboardID = clients.GenerateExternalName(cr.GetNamespace(), cr.GetName())
+		if cr.GetAnnotations() == nil {
+			cr.SetAnnotations(make(map[string]string))
+		}
+		cr.GetAnnotations()["crossplane.io/external-name"] = dashboardID
 		return managed.ExternalObservation{
 			ResourceExists: false,
 		}, nil
 	}
 
-	dashboard, err := c.service.GetDashboard(ctx, dashboardID)
+	// Validate external-name is a valid UUID - if not, generate a new one
+	if _, err := uuid.Parse(dashboardID); err != nil {
+		// Not a valid UUID, generate a new one
+		dashboardID = clients.GenerateExternalName(cr.GetNamespace(), cr.GetName())
+		if cr.GetAnnotations() == nil {
+			cr.SetAnnotations(make(map[string]string))
+		}
+		cr.GetAnnotations()["crossplane.io/external-name"] = dashboardID
+		return managed.ExternalObservation{
+			ResourceExists: false,
+		}, nil
+	}
+
+	dashboard, err := c.service.GetDashboardV2(ctx, dashboardID)
 	if err != nil {
 		if clients.IsNotFound(err) {
 			return managed.ExternalObservation{
@@ -155,8 +180,11 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		}
 	}
 
-	// Check if the dashboard is up to date
-	upToDate := isDashboardUpToDate(cr.Spec.ForProvider, dashboard)
+	// Set Ready condition since the resource exists
+	cr.Status.SetConditions(xpv1.Available())
+
+	// Check if the dashboard is up to date (V2 version)
+	upToDate := isDashboardV2UpToDate(cr.Spec.ForProvider, dashboard)
 
 	return managed.ExternalObservation{
 		ResourceExists:   true,
@@ -170,29 +198,34 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.New(errNotDashboard)
 	}
 
-	dashboardData := &clients.DashboardData{
-		Title:       cr.Spec.ForProvider.Title,
-		Description: "",
-		Tags:        cr.Spec.ForProvider.Tags,
-		Layout:      convertLayout(cr.Spec.ForProvider.Layout),
-		Widgets:     convertWidgets(cr.Spec.ForProvider.Widgets),
-		Variables:   convertVariables(cr.Spec.ForProvider.Variables),
-	}
-
+	description := ""
 	if cr.Spec.ForProvider.Description != nil {
-		dashboardData.Description = *cr.Spec.ForProvider.Description
+		description = *cr.Spec.ForProvider.Description
 	}
 
-	created, err := c.service.CreateDashboard(ctx, dashboardData)
+	dashboardV2 := convertToV2(
+		cr.Spec.ForProvider.Title,
+		description,
+		cr.Spec.ForProvider.Tags,
+		cr.Spec.ForProvider.Widgets,
+		cr.Spec.ForProvider.Layout,
+	)
+
+	created, err := c.service.CreateDashboardV2(ctx, dashboardV2)
 	if err != nil {
 		return managed.ExternalCreation{}, errors.Wrap(err, errCreateDashboard)
 	}
 
-	// Set the external-name annotation to the dashboard ID
+	// Set the external-name annotation to the dashboard ID (UUID from V2 API)
 	if cr.GetAnnotations() == nil {
 		cr.SetAnnotations(make(map[string]string))
 	}
-	cr.GetAnnotations()["crossplane.io/external-name"] = created.ID
+	// V2 API returns ID or UUID - use whichever is available
+	externalID := created.ID
+	if externalID == "" {
+		externalID = created.UUID
+	}
+	cr.GetAnnotations()["crossplane.io/external-name"] = externalID
 
 	return managed.ExternalCreation{}, nil
 }
@@ -208,20 +241,20 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, errors.New("dashboard ID not found")
 	}
 
-	dashboardData := &clients.DashboardData{
-		Title:       cr.Spec.ForProvider.Title,
-		Description: "",
-		Tags:        cr.Spec.ForProvider.Tags,
-		Layout:      convertLayout(cr.Spec.ForProvider.Layout),
-		Widgets:     convertWidgets(cr.Spec.ForProvider.Widgets),
-		Variables:   convertVariables(cr.Spec.ForProvider.Variables),
-	}
-
+	description := ""
 	if cr.Spec.ForProvider.Description != nil {
-		dashboardData.Description = *cr.Spec.ForProvider.Description
+		description = *cr.Spec.ForProvider.Description
 	}
 
-	_, err := c.service.UpdateDashboard(ctx, dashboardID, dashboardData)
+	dashboardV2 := convertToV2(
+		cr.Spec.ForProvider.Title,
+		description,
+		cr.Spec.ForProvider.Tags,
+		cr.Spec.ForProvider.Widgets,
+		cr.Spec.ForProvider.Layout,
+	)
+
+	_, err := c.service.UpdateDashboardV2(ctx, dashboardID, dashboardV2)
 	if err != nil {
 		return managed.ExternalUpdate{}, errors.Wrap(err, errUpdateDashboard)
 	}
@@ -280,6 +313,33 @@ func isDashboardUpToDate(spec v1beta1.DashboardParameters, dashboard *clients.Da
 
 	// For simplicity, we'll consider the dashboard up to date if basic fields match
 	// In a more sophisticated implementation, we would deeply compare widgets, layout, etc.
+	return true
+}
+
+func isDashboardV2UpToDate(spec v1beta1.DashboardParameters, dashboard *clients.DashboardV2Data) bool {
+	if spec.Title != dashboard.Spec.Display.Name {
+		return false
+	}
+
+	expectedDesc := ""
+	if spec.Description != nil {
+		expectedDesc = *spec.Description
+	}
+	if dashboard.Spec.Display != nil && expectedDesc != dashboard.Spec.Display.Description {
+		return false
+	}
+
+	// Compare tags
+	if len(spec.Tags) != len(dashboard.Tags) {
+		return false
+	}
+	for i, tag := range spec.Tags {
+		if i >= len(dashboard.Tags) || tag != dashboard.Tags[i].Key {
+			return false
+		}
+	}
+
+	// For simplicity, we'll consider the dashboard up to date if basic fields match
 	return true
 }
 
@@ -445,4 +505,124 @@ func convertVariables(variables map[string]v1beta1.Variable) map[string]interfac
 		result[k] = variable
 	}
 	return result
+}
+
+func convertToV2(title, description string, tags []string, widgets []v1beta1.Widget, layout []v1beta1.Layout) *clients.DashboardV2Data {
+	v2name := strings.ToLower(strings.ReplaceAll(title, " ", "-"))
+	v2 := &clients.DashboardV2Data{
+		Name:          v2name,
+		SchemaVersion: "v6",
+		Tags: make([]clients.DashboardTag, len(tags)),
+		Spec: clients.DashboardV2Spec{
+			Display: &clients.DashboardV2Display{
+				Name:        title,
+				Description: description,
+			},
+			Panels: make(map[string]interface{}),
+		},
+	}
+
+	if description != "" {
+		v2.Spec.Display.Description = description
+	}
+
+	for i, tag := range tags {
+		v2.Tags[i] = clients.DashboardTag{Key: tag, Value: tag}
+	}
+
+	panels := make(map[string]interface{})
+	var layoutItems []interface{}
+
+	for i, w := range widgets {
+		panelID := w.ID
+		if panelID == "" {
+			panelID = fmt.Sprintf("panel-%d", i)
+		}
+
+		panel := map[string]interface{}{
+			"kind": "Panel",
+			"spec": map[string]interface{}{
+				"display": map[string]interface{}{
+					"name": w.Title,
+				},
+				"plugin": map[string]interface{}{
+					"kind": "signoz/TimeSeriesPanel",
+					"spec": map[string]interface{}{
+						"visualization": map[string]interface{}{
+							"timePreference": "global_time",
+						},
+					},
+				},
+				"queries": []interface{}{
+					convertQueryToV2(w.Query),
+				},
+			},
+		}
+
+		if w.YAxisUnit != nil {
+			panel["spec"].(map[string]interface{})["plugin"].(map[string]interface{})["spec"].(map[string]interface{})["formatting"] = map[string]interface{}{
+				"unit": *w.YAxisUnit,
+			}
+		}
+
+		panels[panelID] = panel
+
+		layoutItems = append(layoutItems, map[string]interface{}{
+			"x":      i % 2 * 6,
+			"y":      (i / 2) * 6,
+			"width":  6,
+			"height": 6,
+			"content": map[string]interface{}{
+				"$ref": "#/spec/panels/" + panelID,
+			},
+		})
+	}
+
+	v2.Spec.Panels = panels
+	v2.Spec.Layouts = []interface{}{
+		map[string]interface{}{
+			"kind": "Grid",
+			"spec": map[string]interface{}{
+				"items": layoutItems,
+			},
+		},
+	}
+
+	return v2
+}
+
+func convertQueryToV2(query v1beta1.Query) map[string]interface{} {
+	compQuery := map[string]interface{}{
+		"kind": "time_series",
+		"spec": map[string]interface{}{
+			"plugin": map[string]interface{}{
+				"kind": "signoz/CompositeQuery",
+				"spec": map[string]interface{}{
+					"queries": []interface{}{},
+				},
+			},
+		},
+	}
+
+	if len(query.PromQL) > 0 {
+		queries := make([]interface{}, len(query.PromQL))
+		for i, pq := range query.PromQL {
+			name := fmt.Sprintf("A%d", i)
+			if pq.Name != nil {
+				name = *pq.Name
+			}
+			queries[i] = map[string]interface{}{
+				"type": "promql",
+				"spec": map[string]interface{}{
+					"query":    pq.Query,
+					"legend":   "",
+					"name":     name,
+					"disabled": false,
+				},
+			}
+		}
+		compQuery["spec"].(map[string]interface{})["plugin"].(map[string]interface{})["spec"].(map[string]interface{})["queries"] = queries
+	}
+
+	return compQuery
 }

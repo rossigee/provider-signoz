@@ -233,7 +233,7 @@ type NotificationChannelSpec struct {
 // NotificationChannelObservation are the observable fields of a NotificationChannel.
 type NotificationChannelObservation struct {
 	// ID is the unique identifier of the channel in SigNoz.
-	ID int `json:"id,omitempty"`
+	ID string `json:"id,omitempty"`
 
 	// CreatedAt is when the channel was created.
 	CreatedAt *metav1.Time `json:"createdAt,omitempty"`

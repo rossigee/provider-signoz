@@ -103,8 +103,8 @@ type RuleCondition struct {
 type CompositeQuery struct {
 	// QueryType defines the type of query (1=PromQL, 2=ClickHouse, 3=Builder).
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=1;2;3
-	QueryType int `json:"queryType"`
+	// +kubebuilder:validation:Enum="1";"2";"3"
+	QueryType string `json:"queryType"`
 
 	// PromQL contains PromQL queries.
 	// +optional

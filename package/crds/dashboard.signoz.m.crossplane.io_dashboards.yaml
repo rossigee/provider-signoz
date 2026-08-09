@@ -286,10 +286,10 @@ spec:
                               description: QueryType defines the type of query (1=PromQL,
                                 2=ClickHouse, 3=Builder).
                               enum:
-                              - 1
-                              - 2
-                              - 3
-                              type: integer
+                              - "1"
+                              - "2"
+                              - "3"
+                              type: string
                           required:
                           - queryType
                           type: object

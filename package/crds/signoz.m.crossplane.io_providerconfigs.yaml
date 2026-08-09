@@ -113,6 +113,13 @@ spec:
                   For SigNoz Cloud, use: https://api.signoz.cloud
                   For self-hosted, use your instance URL.
                 type: string
+              insecureSkipTLSVerify:
+                default: false
+                description: |-
+                  InsecureSkipTLSVerify skips TLS certificate verification when
+                  connecting to the SigNoz API. Use only for development/testing
+                  or when connecting to internal infrastructure with a private CA.
+                type: boolean
             required:
             - credentials
             type: object

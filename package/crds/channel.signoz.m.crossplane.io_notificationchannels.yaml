@@ -478,7 +478,7 @@ spec:
                     type: string
                   id:
                     description: ID is the unique identifier of the channel in SigNoz.
-                    type: integer
+                    type: string
                   updatedAt:
                     description: UpdatedAt is when the channel was last updated.
                     format: date-time

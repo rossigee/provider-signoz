@@ -31,6 +31,13 @@ type ProviderConfigSpec struct {
 	// For self-hosted, use your instance URL.
 	// +optional
 	Endpoint *string `json:"endpoint,omitempty"`
+
+	// InsecureSkipTLSVerify skips TLS certificate verification when
+	// connecting to the SigNoz API. Use only for development/testing
+	// or when connecting to internal infrastructure with a private CA.
+	// +optional
+	// +kubebuilder:default=false
+	InsecureSkipTLSVerify *bool `json:"insecureSkipTLSVerify,omitempty"`
 }
 
 // ProviderCredentials required to authenticate.

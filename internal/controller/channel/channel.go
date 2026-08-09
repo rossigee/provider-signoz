@@ -19,12 +19,15 @@ package channel
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rossigee/provider-signoz/apis/channel/v1beta1"
 	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
@@ -34,8 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strconv"
-	"time"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -95,6 +97,8 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New(errNotChannel)
 	}
 
+	log := log.FromContext(ctx)
+
 	if err := c.usage.Track(ctx, mg.(resource.ModernManaged)); err != nil {
 		return nil, errors.Wrap(err, errTrackPCUsage)
 	}
@@ -103,15 +107,22 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.New("no providerConfigRef provided")
 	}
 
+	pcRefName := cr.GetProviderConfigReference().Name
+	log.V(1).Info("Connect: fetching ProviderConfig", "pcRefName", pcRefName, "namespace", "")
 	pc := &apisv1beta1.ProviderConfig{}
-	if err := c.kube.Get(ctx, types.NamespacedName{Namespace: "", Name: cr.GetProviderConfigReference().Name}, pc); err != nil {
+	if err := c.kube.Get(ctx, types.NamespacedName{Namespace: "", Name: pcRefName}, pc); err != nil {
+		log.V(1).Info("Connect: ProviderConfig Get failed", "error", err)
 		return nil, errors.Wrap(err, errGetPC)
 	}
+	log.V(1).Info("Connect: ProviderConfig Get succeeded", "pcRefName", pcRefName)
 
+	log.V(1).Info("Connect: calling GetConfig", "pcRefName", pcRefName)
 	cfg, err := clients.GetConfig(ctx, c.kube, mg)
 	if err != nil {
+		log.V(1).Info("Connect: GetConfig failed", "error", err)
 		return nil, errors.Wrap(err, errGetCreds)
 	}
+	log.V(1).Info("Connect: GetConfig succeeded", "baseURL", cfg.BaseURL)
 
 	return &external{
 		service: c.newServiceFn(*cfg),
@@ -132,9 +143,26 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, errors.New(errNotChannel)
 	}
 
+	log := log.FromContext(ctx)
+
 	// Get the channel ID from the external-name annotation
 	channelIDStr := cr.GetAnnotations()["crossplane.io/external-name"]
+	log.V(1).Info("Observe: channelIDStr", "channelIDStr", channelIDStr)
 	if channelIDStr == "" {
+		log.V(1).Info("Observe: external-name empty, returning ResourceExists=false")
+		return managed.ExternalObservation{
+			ResourceExists: false,
+		}, nil
+	}
+
+	// Validate external-name is a valid UUID - if not, generate a new one
+	if _, err := uuid.Parse(channelIDStr); err != nil {
+		log.V(1).Info("Observe: external-name is not a valid UUID, generating new one", "channelIDStr", channelIDStr)
+		channelIDStr = clients.GenerateExternalName(cr.GetNamespace(), cr.GetName())
+		if cr.GetAnnotations() == nil {
+			cr.SetAnnotations(make(map[string]string))
+		}
+		cr.GetAnnotations()["crossplane.io/external-name"] = channelIDStr
 		return managed.ExternalObservation{
 			ResourceExists: false,
 		}, nil
@@ -143,10 +171,12 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	channel, err := c.service.GetChannel(ctx, channelIDStr)
 	if err != nil {
 		if clients.IsNotFound(err) {
+			log.V(1).Info("Observe: channel not found on API, returning ResourceExists=false", "channelIDStr", channelIDStr, "error", err)
 			return managed.ExternalObservation{
 				ResourceExists: false,
 			}, nil
 		}
+		log.V(1).Info("Observe: GetChannel error (non-404)", "channelIDStr", channelIDStr, "error", err)
 		return managed.ExternalObservation{}, errors.Wrap(err, errGetChannel)
 	}
 
@@ -164,6 +194,9 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			cr.Status.AtProvider.UpdatedAt = &metav1.Time{Time: updatedAt}
 		}
 	}
+
+	// Set Ready condition since the resource exists
+	cr.Status.SetConditions(xpv1.Available())
 
 	// Check if the channel is up to date
 	upToDate, err := c.isChannelUpToDate(ctx, cr.Spec.ForProvider, channel)
@@ -197,7 +230,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	if cr.GetAnnotations() == nil {
 		cr.SetAnnotations(make(map[string]string))
 	}
-	cr.GetAnnotations()["crossplane.io/external-name"] = strconv.Itoa(created.ID)
+	cr.GetAnnotations()["crossplane.io/external-name"] = created.ID
 
 	return managed.ExternalCreation{}, nil
 }
@@ -270,7 +303,6 @@ func (c *external) convertToChannelData(ctx context.Context, spec v1beta1.Notifi
 	channelData := &clients.ChannelData{
 		Name: spec.Name,
 		Type: spec.Type,
-		Data: make(map[string]interface{}),
 	}
 
 	switch spec.Type {
@@ -280,7 +312,7 @@ func (c *external) convertToChannelData(ctx context.Context, spec v1beta1.Notifi
 			if err != nil {
 				return nil, err
 			}
-			channelData.Data = slackData
+			channelData.SlackConfigs = []interface{}{slackData}
 		}
 	case "webhook":
 		if len(spec.WebhookConfigs) > 0 {
@@ -288,7 +320,7 @@ func (c *external) convertToChannelData(ctx context.Context, spec v1beta1.Notifi
 			if err != nil {
 				return nil, err
 			}
-			channelData.Data = webhookData
+			channelData.WebhookConfigs = []interface{}{webhookData}
 		}
 	case "pagerduty":
 		if len(spec.PagerDutyConfigs) > 0 {
@@ -296,12 +328,12 @@ func (c *external) convertToChannelData(ctx context.Context, spec v1beta1.Notifi
 			if err != nil {
 				return nil, err
 			}
-			channelData.Data = pagerDutyData
+			channelData.PagerDutyConfigs = []interface{}{pagerDutyData}
 		}
 	case "email":
 		if len(spec.EmailConfigs) > 0 {
 			emailData := c.convertEmailConfig(spec.EmailConfigs[0])
-			channelData.Data = emailData
+			channelData.EmailConfigs = []interface{}{emailData}
 		}
 	case "opsgenie":
 		if len(spec.OpsGenieConfigs) > 0 {
@@ -309,7 +341,7 @@ func (c *external) convertToChannelData(ctx context.Context, spec v1beta1.Notifi
 			if err != nil {
 				return nil, err
 			}
-			channelData.Data = opsGenieData
+			channelData.OpsGenieConfigs = []interface{}{opsGenieData}
 		}
 	case "msteams":
 		if len(spec.MSTeamsConfigs) > 0 {
@@ -317,7 +349,7 @@ func (c *external) convertToChannelData(ctx context.Context, spec v1beta1.Notifi
 			if err != nil {
 				return nil, err
 			}
-			channelData.Data = msTeamsData
+			channelData.MSTeamsConfigs = []interface{}{msTeamsData}
 		}
 	case "sns":
 		if len(spec.SNSConfigs) > 0 {
@@ -325,7 +357,7 @@ func (c *external) convertToChannelData(ctx context.Context, spec v1beta1.Notifi
 			if err != nil {
 				return nil, err
 			}
-			channelData.Data = snsData
+			channelData.SNSConfigs = []interface{}{snsData}
 		}
 	default:
 		return nil, fmt.Errorf("unsupported channel type: %s", spec.Type)

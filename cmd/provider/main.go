@@ -64,10 +64,13 @@ func main() {
 	shutdownTracing := tracing.Init("provider-signoz")
 	defer shutdownTracing(context.Background())
 
-	// Always set controller-runtime logger to avoid "log.SetLogger was never called"
-	// stack traces from priorityqueue etc. Use V(1) in non-debug to keep noise low.
-	// Always set the controller-runtime logger to prevent logging errors
-	ctrl.SetLogger(zl)
+	// Always set the controller-runtime logger (prevents the "log.SetLogger was never called"
+	// stack from priorityqueue etc at startup). Use V(1) in non-debug to limit verbosity.
+	if *debug {
+		ctrl.SetLogger(zl)
+	} else {
+		ctrl.SetLogger(zl.V(1))
+	}
 
 	// Log startup information with build and configuration details
 	log.Info("Provider starting up",
