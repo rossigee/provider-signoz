@@ -36,7 +36,7 @@ The SigNoz provider enables platform teams to manage SigNoz dashboards, alerts, 
 - SigNoz instance (self-hosted or cloud)
 - API token with appropriate permissions
 
-## Installation
+## Getting Started
 
 ### Quick Start
 
@@ -167,7 +167,7 @@ spec:
     name: default
 ```
 
-## Resource Reference
+## Resource Types
 
 ### Dashboard Resource
 
