@@ -157,12 +157,15 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	dashboard, err := c.service.GetDashboardV2(ctx, dashboardID)
 	if err != nil {
 		if clients.IsNotFound(err) {
+			clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 			return managed.ExternalObservation{
 				ResourceExists: false,
 			}, nil
 		}
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalObservation{}, errors.Wrap(err, errGetDashboard)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	// Update the status with observed values
 	cr.Status.AtProvider.ID = dashboard.ID
@@ -213,8 +216,10 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	created, err := c.service.CreateDashboardV2(ctx, dashboardV2)
 	if err != nil {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalCreation{}, errors.Wrap(err, errCreateDashboard)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	// Set the external-name annotation to the dashboard ID (UUID from V2 API)
 	if cr.GetAnnotations() == nil {
@@ -256,8 +261,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	_, err := c.service.UpdateDashboardV2(ctx, dashboardID, dashboardV2)
 	if err != nil {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalUpdate{}, errors.Wrap(err, errUpdateDashboard)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	return managed.ExternalUpdate{}, nil
 }
@@ -275,8 +282,10 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	err := c.service.DeleteDashboard(ctx, dashboardID)
 	if err != nil && !clients.IsNotFound(err) {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalDelete{}, errors.Wrap(err, errDeleteDashboard)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	return managed.ExternalDelete{}, nil
 }
@@ -518,7 +527,9 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 				Name:        title,
 				Description: description,
 			},
-			Panels: make(map[string]interface{}),
+			Panels:     make(map[string]interface{}),
+			Variables:  []interface{}{},
+			Layouts:    []interface{}{},
 		},
 	}
 
