@@ -24,7 +24,10 @@ import (
 	"time"
 
 	"github.com/rossigee/provider-signoz/apis"
+	"github.com/rossigee/provider-signoz/internal/breaker"
+	"github.com/rossigee/provider-signoz/internal/clients"
 	"github.com/rossigee/provider-signoz/internal/controller"
+	"github.com/rossigee/provider-signoz/internal/controller/providerconfig"
 	"github.com/rossigee/provider-signoz/internal/tracing"
 	"github.com/rossigee/provider-signoz/internal/version"
 	xpcontroller "github.com/crossplane/crossplane-runtime/v2/pkg/controller"
@@ -54,6 +57,15 @@ func main() {
 		pollInterval             = app.Flag("poll", "Poll interval controls how often an individual resource should be checked for drift.").Default("10m").Duration()
 		maxReconcileRate         = app.Flag("max-reconcile-rate", "The global maximum rate per second at which resources may checked for drift from the desired state.").Default("10").Int()
 		enableManagementPolicies = app.Flag("enable-management-policies", "Enable support for Management Policies.").Default("false").Envar("ENABLE_MANAGEMENT_POLICIES").Bool()
+
+		// Credentials defence-in-depth knobs. Default behaviour matches the
+		// values agreed in the design plan (min API key length 8, breaker
+		// window 60s / threshold 5 / cooldown 5m).
+		minAPIKeyLength      = app.Flag("min-api-key-length", "Reject Signoz API keys shorter than this many characters.").Default("8").Int()
+		authFailureWindow    = app.Flag("auth-failure-window", "Sliding window over which consecutive auth failures are counted by the upstream breaker.").Default("60s").Duration()
+		authFailureThreshold = app.Flag("auth-failure-threshold", "Number of consecutive auth failures within the window that trip the breaker.").Default("5").Int()
+		authFailureCooldown  = app.Flag("auth-failure-cooldown", "Duration the breaker stays open after tripping before allowing a probe.").Default("5m").Duration()
+		probeConnTimeout     = app.Flag("probe-conn-timeout", "Per-attempt timeout for ProviderConfig credentials probe.").Default("10s").Duration()
 	)
 
 	kingpin.MustParse(app.Parse(os.Args[1:]))
@@ -84,6 +96,11 @@ func main() {
 		"leader-election", *leaderElection,
 		"leader-election-namespace", *leaderElectionNamespace,
 		"management-policies", *enableManagementPolicies,
+		"min-api-key-length", *minAPIKeyLength,
+		"auth-failure-window", authFailureWindow.String(),
+		"auth-failure-threshold", *authFailureThreshold,
+		"auth-failure-cooldown", authFailureCooldown.String(),
+		"probe-conn-timeout", probeConnTimeout.String(),
 		"debug-mode", *debug)
 
 	log.Debug("Detailed startup configuration",
@@ -140,11 +157,28 @@ func main() {
 		Features:                &feature.Flags{},
 	}
 
+	// Wire credentials-defence knobs into the clients package so every
+	// client.GetConfig() and Client.doRequest() observe them.
+	clients.SetMinAPIKeyLength(*minAPIKeyLength)
+	clients.SetAuthBreaker(breaker.New(*authFailureThreshold, *authFailureWindow, *authFailureCooldown))
+	log.Info("Credential hardening configured",
+		"min-api-key-length", *minAPIKeyLength,
+		"auth-failure-window", authFailureWindow.String(),
+		"auth-failure-threshold", *authFailureThreshold,
+		"auth-failure-cooldown", authFailureCooldown.String(),
+		"probe-conn-timeout", probeConnTimeout.String())
+
 	if *enableManagementPolicies {
 		log.Info("Management policies feature enabled")
 	}
 
-	kingpin.FatalIfError(controller.Setup(mgr, o), "Cannot setup controllers")
+	pcCfg := providerconfig.ReconcilerConfig{
+		Logger:        zl,
+		ConnTimeout:   *probeConnTimeout,
+		BackoffPolicy: clients.DefaultBackoffPolicy,
+		NowFn:         time.Now,
+	}
+	kingpin.FatalIfError(controller.SetupWithPCConfig(mgr, o, pcCfg), "Cannot setup controllers")
 
 	kingpin.FatalIfError(mgr.AddHealthzCheck("healthz", healthz.Ping), "Cannot add health check")
 	kingpin.FatalIfError(mgr.AddReadyzCheck("readyz", healthz.Ping), "Cannot add ready check")

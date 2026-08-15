@@ -163,12 +163,15 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	alert, err := c.service.GetRule(ctx, alertID)
 	if err != nil {
 		if clients.IsNotFound(err) {
+			clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 			return managed.ExternalObservation{
 				ResourceExists: false,
 			}, nil
 		}
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalObservation{}, errors.Wrap(err, errGetAlert)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	// Update the status with observed values
 	cr.Status.AtProvider.ID = alert.ID
@@ -231,8 +234,10 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	created, err := c.service.CreateRule(ctx, ruleData)
 	if err != nil {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalCreation{}, errors.Wrap(err, errCreateAlert)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	// Set the external-name annotation to the alert ID
 	if cr.GetAnnotations() == nil {
@@ -276,8 +281,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	_, err := c.service.UpdateRule(ctx, alertID, ruleData)
 	if err != nil {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalUpdate{}, errors.Wrap(err, errUpdateAlert)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	return managed.ExternalUpdate{}, nil
 }
@@ -295,8 +302,10 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	err := c.service.DeleteRule(ctx, alertID)
 	if err != nil && !clients.IsNotFound(err) {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalDelete{}, errors.Wrap(err, errDeleteAlert)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	return managed.ExternalDelete{}, nil
 }

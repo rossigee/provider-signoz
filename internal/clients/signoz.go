@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 	"github.com/rossigee/provider-signoz/apis/v1beta1"
 
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -60,7 +62,97 @@ const (
 	errTrackUsage           = "cannot track ProviderConfig usage"
 	errExtractCredentials   = "cannot extract credentials"
 	errUnmarshalCredentials = "cannot unmarshal signoz credentials as JSON"
+	errEmptyAPIKey          = "signoz credentials are missing an apiKey (misconfigured ProviderConfig or empty secret)"
+	errShortAPIKey          = "signoz credentials apiKey is shorter than the configured minimum"
+	errNoCredentials        = "refusing to call Signoz API: apiKey is empty"
 )
+
+// Sentinel errors returned by API calls. Callers (controllers) branch on these
+// to choose the correct reconcile backoff (see controller backoff helpers).
+var (
+	ErrAuth        = errors.New("signoz API: authentication failed")
+	ErrTransient   = errors.New("signoz API: transient error")
+	ErrRateLimited = errors.New("signoz API: rate limited")
+)
+
+// RateLimitedError is returned when the upstream Signoz API returns HTTP 429.
+// It carries the Retry-After duration when the upstream provides one so callers
+// can honour it instead of using a generic backoff.
+type RateLimitedError struct {
+	RetryAfter time.Duration
+	Body       string
+}
+
+func (e *RateLimitedError) Error() string {
+	if e.RetryAfter > 0 {
+		return fmt.Sprintf("signoz API: rate limited (retry after %s) - %s", e.RetryAfter, e.Body)
+	}
+	return fmt.Sprintf("signoz API: rate limited - %s", e.Body)
+}
+
+// Is reports the sentinel ErrRateLimited so callers can use errors.Is for
+// type-switching while still accessing Retry-After via errors.As.
+func (e *RateLimitedError) Is(target error) bool {
+	return target == ErrRateLimited
+}
+
+// MinAPIKeyLength is the minimum acceptable length of an extracted Signoz
+// apiKey. Keys shorter than this are almost certainly a misconfiguration
+// (empty secret, placeholder, wrong key) and are rejected before any
+// upstream call is attempted, preventing repeated 401 hammering of the
+// Signoz API.
+//
+// The default of 8 is intentionally generous; legitimate Signoz API keys are
+// much longer. Override at provider startup with SetMinAPIKeyLength.
+var MinAPIKeyLength = 8
+
+// SetMinAPIKeyLength overrides the package-level minimum. Negative values are
+// ignored. Intended to be called once at provider boot from flag parsing.
+func SetMinAPIKeyLength(n int) {
+	if n < 0 {
+		return
+	}
+	MinAPIKeyLength = n
+}
+
+// AuthBreaker is the package-level circuit breaker for upstream auth
+// failures. It is shared across all Client instances in this process and is
+// keyed by the destination BaseURL plus an apiKey fingerprint, so a bad
+// ProviderConfig trips its own breaker without affecting healthy ones.
+//
+// SetAuthBreaker lets main() install a configured breaker; tests can disable
+// the breaker by passing nil (the resulting "no-op" behaves as always closed).
+func SetAuthBreaker(b AuthBreaker) {
+	authBreaker = b
+}
+
+// AuthBreaker is the minimal interface the Client needs from a breaker.
+// internal/breaker.Breaker satisfies it; tests can substitute fakes without
+// importing the breaker package.
+type AuthBreaker interface {
+	Allow(key string, probe bool) error
+	Record(key string, isAuthFailure bool)
+	CooldownRemaining(key string) time.Duration
+}
+
+var authBreaker AuthBreaker = noopBreaker{}
+
+type noopBreaker struct{}
+
+func (noopBreaker) Allow(string, bool) error              { return nil }
+func (noopBreaker) Record(string, bool)                   {}
+func (noopBreaker) CooldownRemaining(string) time.Duration { return 0 }
+
+// breakerKey returns the lookup key for the auth breaker: a sha256-derived
+// fingerprint of BaseURL + ":" + apiKey so a misconfigured ProviderConfig is
+// isolated from healthy ones.
+func breakerKey(baseURL, apiKey string) string {
+	h := sha256.New()
+	h.Write([]byte(baseURL))
+	h.Write([]byte{0})
+	h.Write([]byte(apiKey))
+	return fmt.Sprintf("%x", h.Sum(nil))
+}
 
 // Config holds SigNoz client configuration
 type Config struct {
@@ -143,7 +235,15 @@ func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Man
 		return nil, errors.Wrap(err, errTrackUsage)
 	}
 
-	data, err := resource.CommonCredentialExtractor(ctx, pc.Spec.Credentials.Source, c.Client, pc.Spec.Credentials.CommonCredentialSelectors)
+	return GetConfigFromProviderConfig(ctx, c.Client, pc)
+}
+
+// GetConfigFromProviderConfig extracts Signoz Config from an already-loaded
+// ProviderConfig object. Used by the ProviderConfig reconciler which doesn't
+// have a managed resource to reference — and is the single source of truth
+// for credential-validation logic shared with managed-resource controllers.
+func GetConfigFromProviderConfig(ctx context.Context, c client.Client, pc *v1beta1.ProviderConfig) (*Config, error) {
+	data, err := resource.CommonCredentialExtractor(ctx, pc.Spec.Credentials.Source, c, pc.Spec.Credentials.CommonCredentialSelectors)
 	if err != nil {
 		return nil, errors.Wrap(err, errExtractCredentials)
 	}
@@ -153,7 +253,13 @@ func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Man
 		return nil, errors.Wrap(err, errUnmarshalCredentials)
 	}
 
-	// Set default endpoint if not specified
+	if creds.APIKey == "" {
+		return nil, errors.New(errEmptyAPIKey)
+	}
+	if MinAPIKeyLength > 0 && len(creds.APIKey) < MinAPIKeyLength {
+		return nil, errors.Errorf("%s (got %d chars, need >= %d)", errShortAPIKey, len(creds.APIKey), MinAPIKeyLength)
+	}
+
 	endpoint := "https://api.signoz.cloud"
 	if pc.Spec.Endpoint != nil && *pc.Spec.Endpoint != "" {
 		endpoint = *pc.Spec.Endpoint
@@ -171,9 +277,27 @@ func GetConfig(ctx context.Context, c resource.ClientApplicator, mg resource.Man
 	}, nil
 }
 
-// doRequest performs an HTTP request with authentication
+// doRequest performs an HTTP request with authentication.
+//
+// If the client is misconfigured with an empty APIKey, the call is rejected
+// before any TCP connection is opened. This prevents a single bad ProviderConfig
+// from hammering the upstream Signoz API with unauthenticated traffic.
+//
+// For probe calls (used by ProviderConfig credentials check), use probeRequest
+// instead — it bypasses the breaker so the credentials check can still verify
+// recovery after the breaker has tripped.
 func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
 	logger := log.FromContext(ctx)
+
+	if c.config.APIKey == "" {
+		return nil, errors.New(errNoCredentials)
+	}
+
+	key := breakerKey(c.config.BaseURL, c.config.APIKey)
+	if err := authBreaker.Allow(key, false); err != nil {
+		logger.V(1).Info("AuthBreaker: rejecting call", "key", key, "cooldown_remaining", authBreaker.CooldownRemaining(key).String())
+		return nil, err
+	}
 
 	url := fmt.Sprintf("%s%s", c.config.BaseURL, path)
 
@@ -202,6 +326,11 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 		return nil, errors.Wrap(err, "failed to execute request")
 	}
 
+	// Record outcome on the auth breaker before any classification so the
+	// breaker observes every upstream result.
+	authFailure := resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden
+	authBreaker.Record(key, authFailure)
+
 	if resp.StatusCode >= 400 {
 		defer func() {
 			if err := resp.Body.Close(); err != nil {
@@ -210,10 +339,85 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 			}
 		}()
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error: %s - %s", resp.Status, string(bodyBytes))
+		body := string(bodyBytes)
+		switch {
+		case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+			return nil, errors.Wrapf(ErrAuth, "%s - %s", resp.Status, body)
+		case resp.StatusCode == http.StatusTooManyRequests:
+			ra := parseRetryAfter(resp.Header.Get("Retry-After"))
+			return nil, &RateLimitedError{RetryAfter: ra, Body: fmt.Sprintf("%s - %s", resp.Status, body)}
+		case resp.StatusCode >= 500:
+			return nil, errors.Wrapf(ErrTransient, "%s - %s", resp.Status, body)
+		default:
+			return nil, fmt.Errorf("API error: %s - %s", resp.Status, body)
+		}
 	}
 
 	return resp, nil
+}
+
+// probeRequest performs an HTTP request for ProviderConfig credentials check.
+// It bypasses the auth breaker (key=probe, true) so a recovery probe can
+// verify credentials even while the breaker is open.
+//
+// probeRequest intentionally performs only safe GET operations; callers must
+// not use it for state-mutating verbs.
+func (c *Client) probeRequest(ctx context.Context, method, path string) (*http.Response, error) {
+	logger := log.FromContext(ctx)
+
+	if c.config.APIKey == "" {
+		return nil, errors.New(errNoCredentials)
+	}
+
+	url := fmt.Sprintf("%s%s", c.config.BaseURL, path)
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create probe request")
+	}
+	req.Header.Set("SIGNOZ-API-KEY", c.config.APIKey)
+
+	logger.V(1).Info("Probe request", "method", method, "url", url)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to execute probe request")
+	}
+
+	// Probe outcomes update the breaker so a successful probe closes the
+	// breaker; a failing probe re-arms it.
+	key := breakerKey(c.config.BaseURL, c.config.APIKey)
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		authBreaker.Record(key, true)
+	} else if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		authBreaker.Record(key, false)
+	}
+	return resp, nil
+}
+
+// ProbeCredentials verifies that the configured credentials are accepted by
+// the upstream Signoz API. It performs a cheap, side-effect-free GET against
+// the channels endpoint and returns nil on a 2xx response, a typed error
+// otherwise. The result is fed back to the breaker.
+func (c *Client) ProbeCredentials(ctx context.Context) error {
+	resp, err := c.probeRequest(ctx, http.MethodGet, "/api/v1/channels?limit=1")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode >= 200 && resp.StatusCode < 400 {
+		return nil
+	}
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	body := string(bodyBytes)
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return errors.Wrapf(ErrAuth, "%s - %s", resp.Status, body)
+	case resp.StatusCode >= 500:
+		return errors.Wrapf(ErrTransient, "%s - %s", resp.Status, body)
+	default:
+		return fmt.Errorf("probe failed: %s - %s", resp.Status, body)
+	}
 }
 
 // parseResponse parses the response body into the given interface
@@ -245,6 +449,30 @@ func parseResponse(resp *http.Response, v interface{}) error {
 	return nil
 }
 
+// parseRetryAfter parses a Retry-After header value, supporting both
+// the delay-seconds form (e.g. "120") and the HTTP-date form.
+// Returns 0 if the value is empty or unparseable.
+func parseRetryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(value); err == nil {
+		if secs < 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(value); err == nil {
+		d := time.Until(t)
+		if d < 0 {
+			return 0
+		}
+		return d
+	}
+	return 0
+}
+
 // Dashboard API methods
 
 // DashboardData represents a dashboard in SigNoz (V1 format - deprecated)
@@ -270,9 +498,9 @@ type DashboardTag struct {
 // DashboardV2Spec represents the spec section of a V2 dashboard
 type DashboardV2Spec struct {
 	Display   *DashboardV2Display    `json:"display,omitempty"`
-	Layouts   []interface{}          `json:"layouts,omitempty"`
+	Layouts   []interface{}          `json:"layouts"`
 	Panels    map[string]interface{} `json:"panels,omitempty"`
-	Variables []interface{}          `json:"variables,omitempty"`
+	Variables []interface{}          `json:"variables"`
 }
 
 // DashboardV2Display represents the display section of a V2 dashboard

@@ -245,11 +245,69 @@ make xpkg.build
 - Verify API token is valid
 - Check token has required permissions
 - Ensure token is correctly formatted in secret
+- Inspect the ProviderConfig's `CredentialsValid` condition (see below)
 
 #### Connection Errors
 - Verify `endpoint` in ProviderConfig
 - Check network connectivity to SigNoz instance
 - For self-hosted instances, ensure API is exposed
+
+### ProviderConfig Readiness
+
+The provider validates every `ProviderConfig` against the upstream SigNoz
+API before accepting work for any resource that references it. The result is
+recorded on **`status.conditions.CredentialsValid`** (a condition type
+distinct from `Ready` so operators can route alerts on it independently).
+
+| Reason | Meaning | Operator action |
+|---|---|---|
+| `CredentialsAccepted` | Probe succeeded. | None; healthy. |
+| `CredentialsRejected` | Upstream returned 401/403. | Rotate the API key in the Secret referenced by `spec.credentials.secretRef`. |
+| `CredentialsEmpty` | `apiKey` is empty. | Check Secret content and `spec.credentials.secretRef.key`. |
+| `CredentialsTooShort` | `apiKey` is shorter than `--min-api-key-length` (default 8). | Almost certainly a placeholder/mis-paste. Replace. |
+| `SecretMissing` | Secret referenced by ProviderConfig not found, or `apiKey` JSON key absent. | Verify Secret exists and contains valid JSON. |
+| `UpstreamTransient` | Upstream returned 5xx or the probe timed out. | Usually self-healing; ensure SigNoz is healthy. |
+| `EndpointUnreachable` | Probe could not reach the configured `endpoint`. | Verify `endpoint` and DNS. |
+
+When `CredentialsValid=False`, the provider:
+
+1. **Stays running** — the pod does not CrashLoop. This is intentional so a
+   single bad ProviderConfig doesn't take the provider down (CrashLoop would
+   StormLoop probes against the upstream).
+2. **Requeues the probe with exponential backoff**: 30s → 1m → 5m → 5m …
+   (capped at 15m) for auth-class failures. Transient failures use a smaller
+   cap (60s) so the probe recovers quickly once upstream recovers.
+3. **Records every managed-resource Observe error** in the managed resource's
+   own `status.conditions.UpstreamAuth` so a UI/alert rule can see which
+   resources are currently blocked on auth.
+
+### Defending against misconfigured credentials (`--*` flags)
+
+The provider ships with several flags that hard-gate a misconfigured
+ProviderConfig before it can hammer the upstream SigNoz API:
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--min-api-key-length` | `8` | Reject `apiKey` values shorter than this from the Secret. |
+| `--auth-failure-window` | `60s` | Sliding window for counting consecutive auth failures. |
+| `--auth-failure-threshold` | `5` | Auth failures within the window that trip the breaker. |
+| `--auth-failure-cooldown` | `5m` | Time the breaker stays open before allowing a probe. |
+| `--probe-conn-timeout` | `10s` | Per-attempt timeout for the ProviderConfig credentials probe. |
+
+A misconfigured ProviderConfig (empty/short/expired API key) is rejected at
+three increasingly strict layers:
+
+1. **Empty-key short-circuit** in `Client.doRequest` — the request is
+   rejected before any TCP connection. Every managed-resource Observe
+   triggers 0 outbound bytes to the upstream.
+2. **Extraction-time validation** in `clients.GetConfigFromProviderConfig` —
+   the provider does not even build a `Client` until the API key passes
+   non-empty + min-length checks.
+3. **Per-PC upstream breaker** — if upstream auth still fails despite valid
+   syntax, a per-`(baseURL, apiKey-fingerprint)` breaker opens after 5
+   failures in 60s, holding closed for 5m. Only the ProviderConfig probe
+   is permitted while the breaker is open; other managed-resource calls
+   return `ErrBreakerOpen` immediately.
 
 ### Debug Mode
 

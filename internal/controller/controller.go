@@ -26,9 +26,29 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
-// Setup sets up all controllers for the SigNoz provider.
+// Setup sets up all controllers for the SigNoz provider with default
+// ProviderConfig credentials-probe knobs.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	if err := providerconfig.Setup(mgr); err != nil {
+		return err
+	}
+	if err := dashboard.Setup(mgr, o); err != nil {
+		return err
+	}
+	if err := alert.Setup(mgr, o); err != nil {
+		return err
+	}
+	if err := channel.Setup(mgr, o); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SetupWithPCConfig sets up all controllers for the SigNoz provider. The
+// supplied pcReconciler config tunes the ProviderConfig reconciles (probe
+// timeout, backoff policy, etc).
+func SetupWithPCConfig(mgr ctrl.Manager, o controller.Options, pcReconciler providerconfig.ReconcilerConfig) error {
+	if err := providerconfig.SetupWithConfig(mgr, pcReconciler); err != nil {
 		return err
 	}
 	if err := dashboard.Setup(mgr, o); err != nil {

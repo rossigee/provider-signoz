@@ -172,13 +172,16 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	if err != nil {
 		if clients.IsNotFound(err) {
 			log.V(1).Info("Observe: channel not found on API, returning ResourceExists=false", "channelIDStr", channelIDStr, "error", err)
+			clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 			return managed.ExternalObservation{
 				ResourceExists: false,
 			}, nil
 		}
 		log.V(1).Info("Observe: GetChannel error (non-404)", "channelIDStr", channelIDStr, "error", err)
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalObservation{}, errors.Wrap(err, errGetChannel)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	// Update the status with observed values
 	cr.Status.AtProvider.ID = channel.ID
@@ -223,8 +226,10 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	created, err := c.service.CreateChannel(ctx, channelData)
 	if err != nil {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalCreation{}, errors.Wrap(err, errCreateChannel)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	// Set the external-name annotation to the channel ID
 	if cr.GetAnnotations() == nil {
@@ -253,8 +258,10 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	_, err = c.service.UpdateChannel(ctx, channelIDStr, channelData)
 	if err != nil {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalUpdate{}, errors.Wrap(err, errUpdateChannel)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	return managed.ExternalUpdate{}, nil
 }
@@ -272,8 +279,10 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	err := c.service.DeleteChannel(ctx, channelIDStr)
 	if err != nil && !clients.IsNotFound(err) {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalDelete{}, errors.Wrap(err, errDeleteChannel)
 	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 
 	return managed.ExternalDelete{}, nil
 }
