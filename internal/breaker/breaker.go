@@ -147,7 +147,8 @@ func (b *Breaker) State(key string) State {
 }
 
 // CooldownRemaining returns the time until the breaker will close on `key`,
-// or 0 if the breaker is closed.
+// or 0 if the breaker is closed. Uses the breaker's clock (nowFn) so tests
+// can drive the value with a deterministic fake clock.
 func (b *Breaker) CooldownRemaining(key string) time.Duration {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -155,7 +156,7 @@ func (b *Breaker) CooldownRemaining(key string) time.Duration {
 	if !ok || ks.openUntil.IsZero() {
 		return 0
 	}
-	d := time.Until(ks.openUntil)
+	d := ks.openUntil.Sub(b.nowFn())
 	if d < 0 {
 		return 0
 	}
