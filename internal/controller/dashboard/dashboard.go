@@ -36,6 +36,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"github.com/google/uuid"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -188,6 +189,9 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	// Check if the dashboard is up to date (V2 version)
 	upToDate := isDashboardV2UpToDate(cr.Spec.ForProvider, dashboard)
+
+	logger := log.FromContext(ctx)
+	logger.V(1).Info("Dashboard observe", "name", cr.Name, "widgets_count", len(cr.Spec.ForProvider.Widgets), "panels_count", len(dashboard.Spec.Panels), "upToDate", upToDate)
 
 	return managed.ExternalObservation{
 		ResourceExists:   true,
@@ -348,7 +352,18 @@ func isDashboardV2UpToDate(spec v1beta1.DashboardParameters, dashboard *clients.
 		}
 	}
 
-	// For simplicity, we'll consider the dashboard up to date if basic fields match
+	// Compare widget count
+	if len(spec.Widgets) != len(dashboard.Spec.Panels) {
+		return false
+	}
+
+	// Compare each widget (by ID)
+	for _, w := range spec.Widgets {
+		if _, exists := dashboard.Spec.Panels[w.ID]; !exists {
+			return false
+		}
+	}
+
 	return true
 }
 
