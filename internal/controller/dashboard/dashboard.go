@@ -637,13 +637,41 @@ func convertQueryToV2(query v1beta1.Query) map[string]interface{} {
 			if pq.Name != nil {
 				name = *pq.Name
 			}
+			legend := ""
+			if pq.Legend != nil {
+				legend = *pq.Legend
+			}
 			queries[i] = map[string]interface{}{
 				"type": "promql",
 				"spec": map[string]interface{}{
 					"query":    pq.Query,
-					"legend":   "",
+					"legend":   legend,
 					"name":     name,
-					"disabled": false,
+					"disabled": pq.Disabled,
+				},
+			}
+		}
+		compQuery["spec"].(map[string]interface{})["plugin"].(map[string]interface{})["spec"].(map[string]interface{})["queries"] = queries
+	}
+
+	if len(query.ClickHouse) > 0 {
+		queries := make([]interface{}, len(query.ClickHouse))
+		for i, chq := range query.ClickHouse {
+			name := fmt.Sprintf("A%d", i)
+			if chq.Name != nil {
+				name = *chq.Name
+			}
+			legend := ""
+			if chq.Legend != nil {
+				legend = *chq.Legend
+			}
+			queries[i] = map[string]interface{}{
+				"type": "clickhouse_sql",
+				"spec": map[string]interface{}{
+					"query":    chq.Query,
+					"legend":   legend,
+					"name":     name,
+					"disabled": chq.Disabled,
 				},
 			}
 		}
