@@ -736,18 +736,26 @@ func (c *Client) GetRule(ctx context.Context, id string) (*RuleData, error) {
 }
 
 // UpdateRule updates an existing rule
+//
+// The SigNoz rules API returns a plain message string in the data field on
+// success ("rule successfully edited"), not the full rule. Unmarshal into a
+// generic payload so the success status is honoured without failing on the
+// string-vs-object type mismatch.
 func (c *Client) UpdateRule(ctx context.Context, id string, rule *RuleData) (*RuleData, error) {
 	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("/api/v1/rules/%s", id), rule)
 	if err != nil {
 		return nil, err
 	}
 
-	var result RuleResponse
+	var result struct {
+		Status string `json:"status"`
+		Data   string `json:"data"`
+	}
 	if err := parseResponse(resp, &result); err != nil {
 		return nil, err
 	}
 
-	return result.Data, nil
+	return nil, nil
 }
 
 // DeleteRule deletes a rule
