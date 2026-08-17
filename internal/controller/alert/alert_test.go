@@ -144,22 +144,27 @@ func TestConvertCondition(t *testing.T) {
 		t.Errorf("Expected queryType promql, got %v", compositeQuery["queryType"])
 	}
 
-	promQueries, ok := compositeQuery["promQueries"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected promQueries map, got %T", compositeQuery["promQueries"])
+	queries, ok := compositeQuery["queries"].([]interface{})
+	if !ok || len(queries) != 1 {
+		t.Fatalf("expected queries array with 1 envelope, got %T", compositeQuery["queries"])
 	}
-	if _, ok := promQueries["A"]; !ok {
-		t.Errorf("expected promQueries to contain entry 'A'")
+	env, ok := queries[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected query envelope map, got %T", queries[0])
+	}
+	if env["type"] != "promql" {
+		t.Errorf("expected envelope type promql, got %v", env["type"])
 	}
 }
 
 func TestConvertQueryBuilder_MetricAggregation(t *testing.T) {
-	// This test exercises the v5 builder_query schema for a metric alert:
+	// This test exercises the v5 builder_query spec for a metric alert:
 	//   metricName=coredns_panics_total, timeAggregation=rate,
 	//   spaceAggregation=sum.
-	// Prior to the v0.4.0 fix this produced a payload SigNoz would reject
-	// (queries[] vs builderQueries{}, missing queryName/expression/
-	// stepInterval/timeAggregation/spaceAggregation).
+	// The rules API (POST/PUT /api/v1/rules) expects the v5 QueryEnvelope
+	// schema: compositeQuery.queries[] spec carries name/stepInterval/signal/
+	// source/aggregations[] (metricName, temporality, timeAggregation,
+	// spaceAggregation), NOT the legacy v3 builderQueries fields.
 	builder := v1beta1.QueryBuilder{
 		QueryName:         "A",
 		DataSource:        "metrics",
@@ -175,32 +180,70 @@ func TestConvertQueryBuilder_MetricAggregation(t *testing.T) {
 
 	result := convertQueryBuilder(builder)
 
-	if result["queryName"] != "A" {
-		t.Errorf("Expected queryName A, got %v", result["queryName"])
+	if result["name"] != "A" {
+		t.Errorf("Expected name A, got %v", result["name"])
 	}
-	if result["dataSource"] != "metrics" {
-		t.Errorf("Expected dataSource metrics, got %v", result["dataSource"])
+	if result["signal"] != "metrics" {
+		t.Errorf("Expected signal metrics, got %v", result["signal"])
 	}
-	if result["timeAggregation"] != "rate" {
-		t.Errorf("Expected timeAggregation rate, got %v", result["timeAggregation"])
-	}
-	if result["spaceAggregation"] != "sum" {
-		t.Errorf("Expected spaceAggregation sum, got %v", result["spaceAggregation"])
-	}
-	if result["aggregateOperator"] != "rate" {
-		t.Errorf("Expected aggregateOperator rate, got %v", result["aggregateOperator"])
-	}
-	if result["expression"] != "A" {
-		t.Errorf("Expected expression A (default), got %v", result["expression"])
+	if result["source"] != "meter" {
+		t.Errorf("Expected source meter, got %v", result["source"])
 	}
 	if step, ok := result["stepInterval"].(int64); !ok || step != 60 {
 		t.Errorf("Expected stepInterval 60 (default), got %v", result["stepInterval"])
 	}
+
+	rawAggs, ok := result["aggregations"].([]interface{})
+	if !ok || len(rawAggs) != 1 {
+		t.Fatalf("expected aggregations array with 1 entry, got %T %v", result["aggregations"], result["aggregations"])
+	}
+	agg, ok := rawAggs[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected aggregation map, got %T", rawAggs[0])
+	}
+	if agg["metricName"] != "coredns_panics_total" {
+		t.Errorf("Expected metricName coredns_panics_total, got %v", agg["metricName"])
+	}
+	if agg["timeAggregation"] != "rate" {
+		t.Errorf("Expected timeAggregation rate, got %v", agg["timeAggregation"])
+	}
+	if agg["spaceAggregation"] != "sum" {
+		t.Errorf("Expected spaceAggregation sum, got %v", agg["spaceAggregation"])
+	}
 }
 
-func TestConvertCompositeQuery_BuilderQueriesMap(t *testing.T) {
-	// Verify the converter emits builderQueries as a map keyed by query
-	// name (SigNoz v5 contract), not as an array under "queries".
+func TestConvertQueryBuilder_LegacyAggregateOperator(t *testing.T) {
+	// A builder query that only sets the legacy aggregateOperator (no
+	// explicit time/space aggregation) must still yield a usable v5
+	// aggregation (spaceAggregation defaulting to sum).
+	builder := v1beta1.QueryBuilder{
+		QueryName:         "A",
+		DataSource:        "metrics",
+		AggregateOperator: "rate",
+		AggregateAttribute: &v1beta1.KeyAttribute{
+			Key: "coredns_panics_total",
+		},
+	}
+
+	result := convertQueryBuilder(builder)
+
+	rawAggs, ok := result["aggregations"].([]interface{})
+	if !ok || len(rawAggs) != 1 {
+		t.Fatalf("expected aggregations array, got %T %v", result["aggregations"], result["aggregations"])
+	}
+	agg := rawAggs[0].(map[string]interface{})
+	if agg["timeAggregation"] != "rate" {
+		t.Errorf("Expected timeAggregation rate from aggregateOperator, got %v", agg["timeAggregation"])
+	}
+	if agg["spaceAggregation"] != "sum" {
+		t.Errorf("Expected spaceAggregation sum (default), got %v", agg["spaceAggregation"])
+	}
+}
+
+func TestConvertCompositeQuery_BuilderQueriesEnvelope(t *testing.T) {
+	// Verify the converter emits the v5 QueryEnvelope contract: compositeQuery
+	// carries a "queries" array of {type, spec} envelopes for builder queries,
+	// not the legacy builderQueries map.
 	cq := v1beta1.CompositeQuery{
 		QueryType: "3",
 		Builder: &v1beta1.QueryBuilder{
@@ -221,19 +264,30 @@ func TestConvertCompositeQuery_BuilderQueriesMap(t *testing.T) {
 		t.Errorf("Expected queryType builder, got %v", result["queryType"])
 	}
 
-	rawBQ, ok := result["builderQueries"]
+	rawQueries, ok := result["queries"]
 	if !ok {
-		t.Fatalf("expected builderQueries key in compositeQuery, got keys=%v", keysOf(result))
+		t.Fatalf("expected queries key in compositeQuery, got keys=%v", keysOf(result))
 	}
-	bq, ok := rawBQ.(map[string]interface{})
+	queries, ok := rawQueries.([]interface{})
+	if !ok || len(queries) != 1 {
+		t.Fatalf("expected queries array with 1 envelope, got %T %v", rawQueries, rawQueries)
+	}
+	env, ok := queries[0].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected builderQueries to be a map, got %T", rawBQ)
+		t.Fatalf("expected query envelope map, got %T", queries[0])
 	}
-	if _, ok := bq["A"]; !ok {
-		t.Errorf("expected builderQueries to contain entry 'A', got keys=%v", keysOf(bq))
+	if env["type"] != "builder_query" {
+		t.Errorf("Expected envelope type builder_query, got %v", env["type"])
 	}
-	if _, present := result["queries"]; present {
-		t.Errorf("did not expect legacy 'queries' array key in v5 payload")
+	spec, ok := env["spec"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected spec map, got %T", env["spec"])
+	}
+	if spec["name"] != "A" {
+		t.Errorf("Expected spec name A, got %v", spec["name"])
+	}
+	if _, present := result["builderQueries"]; present {
+		t.Errorf("did not expect legacy builderQueries key in v5 payload")
 	}
 }
 
@@ -266,20 +320,25 @@ func TestConditionEqual_BuilderQueryDrift(t *testing.T) {
 			"queryType": "builder",
 			"panelType": "graph",
 			"unit":      nil,
-			"builderQueries": map[string]interface{}{
-				"A": map[string]interface{}{
-					"queryName":    "A",
-					"dataSource":   "metrics",
-					"stepInterval": float64(60),
-					"expression":   "A",
-					"aggregateOperator": "rate",
-					"aggregateAttribute": map[string]interface{}{
-						"key": "coredns_panics_total",
+			"queries": []interface{}{
+				map[string]interface{}{
+					"type": "builder_query",
+					"spec": map[string]interface{}{
+						"name":         "A",
+						"stepInterval": float64(60),
+						"signal":       "metrics",
+						"source":       "meter",
+						"aggregations": []interface{}{
+							map[string]interface{}{
+								"metricName":       "coredns_panics_total",
+								"temporality":      "",
+								"timeAggregation":  "rate",
+								"spaceAggregation": "sum",
+							},
+						},
+						"disabled": false,
+						"legend":   "",
 					},
-					"timeAggregation":  "rate",
-					"spaceAggregation": "sum",
-					"limit":            float64(0),
-					"offset":           float64(0),
 				},
 			},
 		},
@@ -291,18 +350,24 @@ func TestConditionEqual_BuilderQueryDrift(t *testing.T) {
 		"compositeQuery": map[string]interface{}{
 			"queryType": "builder",
 			"panelType": "graph",
-			"builderQueries": map[string]interface{}{
-				"A": map[string]interface{}{
-					"queryName":    "A",
-					"dataSource":   "metrics",
-					"stepInterval": float64(60),
-					"expression":   "A",
-					"aggregateOperator": "rate",
-					"aggregateAttribute": map[string]interface{}{
-						"key": "coredns_panics_total",
+			"queries": []interface{}{
+				map[string]interface{}{
+					"type": "builder_query",
+					"spec": map[string]interface{}{
+						"name":         "A",
+						"stepInterval": float64(60),
+						"signal":       "metrics",
+						"source":       "meter",
+						"aggregations": []interface{}{
+							map[string]interface{}{
+								"metricName":       "coredns_panics_total",
+								"timeAggregation":  "rate",
+								"spaceAggregation": "sum",
+							},
+						},
+						"disabled": false,
+						"legend":   "",
 					},
-					"timeAggregation":  "rate",
-					"spaceAggregation": "sum",
 				},
 			},
 		},

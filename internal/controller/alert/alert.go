@@ -546,48 +546,59 @@ func convertCompositeQuery(query v1beta1.CompositeQuery) map[string]interface{} 
 		"unit":      query.Unit,
 	}
 
+	// The rules API (POST/PUT /api/v1/rules) expects the v5 QueryEnvelope
+	// schema: compositeQuery.queries is an array of {type, spec} envelopes,
+	// NOT the legacy query-range v3 builderQueries/promQueries maps.
+	// SigNoz v0.137.1's ruletypes.AlertCompositeQuery.Queries is
+	// []qbtypes.QueryEnvelope (see pkg/types/ruletypes/alerting.go).
+	queries := make([]interface{}, 0, len(query.PromQL)+len(query.ClickHouse)+1)
+
 	if len(query.PromQL) > 0 {
-		promQueries := make(map[string]interface{}, len(query.PromQL))
 		for i, pq := range query.PromQL {
 			name := pq.Name
 			if name == "" {
 				name = fmt.Sprintf("A%d", i)
 			}
-			promQueries[name] = map[string]interface{}{
-				"name":     name,
-				"query":    pq.Query,
-				"legend":   pq.Legend,
-				"disabled": pq.Disabled,
-				"stats":    nil,
-			}
+			queries = append(queries, map[string]interface{}{
+				"type": "promql",
+				"spec": map[string]interface{}{
+					"name":     name,
+					"query":    pq.Query,
+					"legend":   pq.Legend,
+					"disabled": pq.Disabled,
+					"stats":    nil,
+				},
+			})
 		}
-		result["promQueries"] = promQueries
 	}
 
 	if len(query.ClickHouse) > 0 {
-		chQueries := make(map[string]interface{}, len(query.ClickHouse))
 		for i, chq := range query.ClickHouse {
 			name := chq.Name
 			if name == "" {
 				name = fmt.Sprintf("A%d", i)
 			}
-			chQueries[name] = map[string]interface{}{
-				"name":     name,
-				"query":    chq.Query,
-				"legend":   chq.Legend,
-				"disabled": chq.Disabled,
-			}
+			queries = append(queries, map[string]interface{}{
+				"type": "clickhouse_sql",
+				"spec": map[string]interface{}{
+					"name":     name,
+					"query":    chq.Query,
+					"legend":   chq.Legend,
+					"disabled": chq.Disabled,
+				},
+			})
 		}
-		result["chQueries"] = chQueries
 	}
 
 	if query.Builder != nil {
-		builderQuery := convertQueryBuilder(*query.Builder)
-		name, _ := builderQuery["queryName"].(string)
-		if name == "" {
-			name = "A"
-		}
-		result["builderQueries"] = map[string]interface{}{name: builderQuery}
+		queries = append(queries, map[string]interface{}{
+			"type": "builder_query",
+			"spec": convertQueryBuilder(*query.Builder),
+		})
+	}
+
+	if len(queries) > 0 {
+		result["queries"] = queries
 	}
 
 	if query.Expression != "" {
@@ -608,48 +619,68 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 		stepInterval = *builder.StepInterval
 	}
 
-	expression := builder.Expression
-	if expression == "" {
-		expression = name
+	signal := builder.DataSource
+	if signal == "" {
+		signal = "metrics"
 	}
 
-	result := map[string]interface{}{
-		"queryName":    name,
-		"dataSource":   builder.DataSource,
+	// The rules API v5 envelope expects compositeQuery.queries[].spec to be
+	// a QueryBuilderQuery[MetricAggregation] with a "signal" discriminator
+	// and an "aggregations" array (metricName/temporality/timeAggregation/
+	// spaceAggregation). "source" is required on the wire for metrics
+	// ("meter"); telemetrytypes.Source is always serialized.
+	spec := map[string]interface{}{
+		"name":         name,
 		"stepInterval": stepInterval,
-		"expression":   expression,
+		"signal":       signal,
+		"source":       "meter",
 		"disabled":     builder.Disabled,
 		"legend":       builder.Legend,
-		"pageSize":     0,
 	}
 
-	if builder.AggregateOperator != "" {
-		result["aggregateOperator"] = builder.AggregateOperator
+	aggregation := map[string]interface{}{
+		"metricName":       "",
+		"temporality":      "",
+		"timeAggregation":  "",
+		"spaceAggregation": "",
 	}
+
 	if builder.AggregateAttribute != nil {
-		result["aggregateAttribute"] = convertKeyAttribute(*builder.AggregateAttribute)
-	}
-	if builder.TimeAggregation != "" {
-		result["timeAggregation"] = builder.TimeAggregation
-	}
-	if builder.SpaceAggregation != "" {
-		result["spaceAggregation"] = builder.SpaceAggregation
+		aggregation["metricName"] = builder.AggregateAttribute.Key
 	}
 	if builder.Temporality != "" {
-		result["temporality"] = builder.Temporality
+		aggregation["temporality"] = builder.Temporality
+	}
+	if builder.TimeAggregation != "" {
+		aggregation["timeAggregation"] = builder.TimeAggregation
+	} else if builder.AggregateOperator != "" {
+		// Legacy single-operator form (v3): map to the v5 time/space split.
+		aggregation["timeAggregation"] = builder.AggregateOperator
+	}
+	if builder.SpaceAggregation != "" {
+		aggregation["spaceAggregation"] = builder.SpaceAggregation
+	} else if builder.AggregateOperator != "" {
+		aggregation["spaceAggregation"] = "sum"
 	}
 	if builder.ReduceTo != "" {
-		result["reduceTo"] = builder.ReduceTo
+		aggregation["reduceTo"] = builder.ReduceTo
 	}
+
+	spec["aggregations"] = []interface{}{aggregation}
+
 	if builder.Filters != nil {
-		result["filters"] = convertFilterSet(*builder.Filters)
+		spec["filter"] = convertFilterSet(*builder.Filters)
 	}
 	if len(builder.GroupBy) > 0 {
 		groupBy := make([]interface{}, len(builder.GroupBy))
 		for i, gb := range builder.GroupBy {
-			groupBy[i] = convertKeyAttribute(gb)
+			groupBy[i] = map[string]interface{}{
+				"name":          gb.Key,
+				"fieldDataType": gb.DataType,
+				"fieldContext":  gb.Type,
+			}
 		}
-		result["groupBy"] = groupBy
+		spec["groupBy"] = groupBy
 	}
 	if len(builder.Having) > 0 {
 		having := make([]interface{}, len(builder.Having))
@@ -660,37 +691,60 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 				"value":      h.Value,
 			}
 		}
-		result["having"] = having
+		spec["having"] = having
 	}
 	if len(builder.OrderBy) > 0 {
 		orderBy := make([]interface{}, len(builder.OrderBy))
 		for i, ob := range builder.OrderBy {
 			orderBy[i] = map[string]interface{}{
-				"columnName": ob.ColumnName,
-				"order":      ob.Order,
+				"key": map[string]interface{}{
+					"name": ob.ColumnName,
+				},
+				"direction": ob.Order,
 			}
 		}
-		result["orderBy"] = orderBy
+		spec["order"] = orderBy
 	}
 	if len(builder.SelectColumns) > 0 {
-		selectColumns := make([]interface{}, len(builder.SelectColumns))
+		selectFields := make([]interface{}, len(builder.SelectColumns))
 		for i, sc := range builder.SelectColumns {
-			selectColumns[i] = convertKeyAttribute(sc)
+			selectFields[i] = map[string]interface{}{
+				"name": sc.Key,
+			}
 		}
-		result["selectColumns"] = selectColumns
+		spec["selectFields"] = selectFields
 	}
 	if builder.Limit != nil {
-		result["limit"] = uint64(*builder.Limit)
-	} else {
-		result["limit"] = uint64(0)
+		spec["limit"] = uint64(*builder.Limit)
 	}
 	if builder.Offset != nil {
-		result["offset"] = uint64(*builder.Offset)
-	} else {
-		result["offset"] = uint64(0)
+		spec["offset"] = uint64(*builder.Offset)
 	}
 
-	return result
+	return spec
+}
+
+func convertFilterSet(filterSet v1beta1.FilterSet) map[string]interface{} {
+	// The v5 rules API expects filter as {expression: string}. Build the
+	// expression from the structured items following SigNoz's filter
+	// syntax ("key op value", joined by AND/OR). Empty items yield an
+	// empty expression, which SigNoz treats as "no filter".
+	parts := make([]string, 0, len(filterSet.Items))
+	for _, item := range filterSet.Items {
+		if item.Key.Key == "" {
+			continue
+		}
+		if item.Value == nil || *item.Value == "" {
+			parts = append(parts, fmt.Sprintf("%s %s", item.Key.Key, item.Op))
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %s '%s'", item.Key.Key, item.Op, *item.Value))
+	}
+
+	expression := strings.Join(parts, " "+filterSet.Operator+" ")
+	return map[string]interface{}{
+		"expression": expression,
+	}
 }
 
 func convertKeyAttribute(attr v1beta1.KeyAttribute) map[string]interface{} {
@@ -702,22 +756,6 @@ func convertKeyAttribute(attr v1beta1.KeyAttribute) map[string]interface{} {
 		result["dataType"] = attr.DataType
 	}
 	return result
-}
-
-func convertFilterSet(filterSet v1beta1.FilterSet) map[string]interface{} {
-	items := make([]interface{}, len(filterSet.Items))
-	for i, item := range filterSet.Items {
-		items[i] = map[string]interface{}{
-			"key":   convertKeyAttribute(item.Key),
-			"op":    item.Op,
-			"value": item.Value,
-		}
-	}
-
-	return map[string]interface{}{
-		"operator": filterSet.Operator,
-		"items":    items,
-	}
 }
 
 func (c *external) resolveChannelReferences(ctx context.Context, cr *v1beta1.Alert) error {
