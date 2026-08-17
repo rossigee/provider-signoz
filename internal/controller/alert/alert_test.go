@@ -401,3 +401,50 @@ func intPtr(i int) *int {
 func float64Ptr(f float64) *float64 {
 	return &f
 }
+
+func TestConvertQueryBuilder_FilterExpression(t *testing.T) {
+	builder := v1beta1.QueryBuilder{
+		QueryName:         "A",
+		DataSource:        "metrics",
+		AggregateOperator: "rate",
+		AggregateAttribute: &v1beta1.KeyAttribute{
+			Key: "coredns_dns_responses_total",
+		},
+		FilterExpression: "job_name = 'dns-internal-validation'",
+	}
+
+	result := convertQueryBuilder(builder)
+
+	rawFilter, ok := result["filter"]
+	if !ok {
+		t.Fatalf("expected filter key in spec")
+	}
+	filter, ok := rawFilter.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected filter map, got %T", rawFilter)
+	}
+	if filter["expression"] != "job_name = 'dns-internal-validation'" {
+		t.Errorf("expected filter.expression to carry raw expression, got %v", filter["expression"])
+	}
+}
+
+func TestConvertQueryBuilder_FilterExpressionTakesPrecedence(t *testing.T) {
+	// The raw FilterExpression must win over the structured Filters block
+	// when both are present, so the live expression is never lost.
+	builder := v1beta1.QueryBuilder{
+		QueryName:  "A",
+		DataSource: "metrics",
+		Filters: &v1beta1.FilterSet{
+			Operator: "AND",
+			Items:    []v1beta1.FilterItem{},
+		},
+		FilterExpression: "job_name = 'blackbox_dns_external' AND zone = 'bankrut'",
+	}
+
+	result := convertQueryBuilder(builder)
+
+	filter := result["filter"].(map[string]interface{})
+	if filter["expression"] != "job_name = 'blackbox_dns_external' AND zone = 'bankrut'" {
+		t.Errorf("expected raw expression to take precedence, got %v", filter["expression"])
+	}
+}

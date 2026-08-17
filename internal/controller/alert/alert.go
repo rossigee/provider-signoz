@@ -668,7 +668,11 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 
 	spec["aggregations"] = []interface{}{aggregation}
 
-	if builder.Filters != nil {
+	if builder.FilterExpression != "" {
+		spec["filter"] = map[string]interface{}{
+			"expression": builder.FilterExpression,
+		}
+	} else if builder.Filters != nil {
 		spec["filter"] = convertFilterSet(*builder.Filters)
 	}
 	if len(builder.GroupBy) > 0 {

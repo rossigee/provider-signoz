@@ -220,6 +220,14 @@ spec:
                                   Expression is the formula expression for this query. Defaults to
                                   QueryName when empty (i.e. a simple builder query, not a formula).
                                 type: string
+                              filterExpression:
+                                description: |-
+                                  FilterExpression is the raw v5 filter expression string emitted as
+                                  compositeQuery.queries[].spec.filter.expression (e.g.
+                                  "job_name = 'dns-internal-validation'"). Prefer this over the
+                                  structured Filters block when the live SigNoz rule carries an
+                                  expression that the structured form cannot represent.
+                                type: string
                               filters:
                                 description: Filters define the query filters.
                                 properties:

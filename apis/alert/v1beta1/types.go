@@ -233,6 +233,14 @@ type QueryBuilder struct {
 	// +optional
 	Filters *FilterSet `json:"filters,omitempty"`
 
+	// FilterExpression is the raw v5 filter expression string emitted as
+	// compositeQuery.queries[].spec.filter.expression (e.g.
+	// "job_name = 'dns-internal-validation'"). Prefer this over the
+	// structured Filters block when the live SigNoz rule carries an
+	// expression that the structured form cannot represent.
+	// +optional
+	FilterExpression string `json:"filterExpression,omitempty"`
+
 	// GroupBy defines the grouping attributes.
 	// +optional
 	GroupBy []KeyAttribute `json:"groupBy,omitempty"`
