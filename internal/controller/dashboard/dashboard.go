@@ -24,6 +24,7 @@ import (
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
@@ -55,8 +56,7 @@ const (
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	name := managed.ControllerName(v1beta1.Dashboard_GroupVersionKind.Kind)
 
-	r := managed.NewReconciler(mgr,
-		resource.ManagedKind(v1beta1.Dashboard_GroupVersionKind),
+	opts := []managed.ReconcilerOption{
 		managed.WithExternalConnector(&connector{
 			kube:         resource.ClientApplicator{Client: mgr.GetClient(), Applicator: resource.NewAPIPatchingApplicator(mgr.GetClient())},
 			usage:        resource.ModernTrackerFn(func(ctx context.Context, mg resource.ModernManaged) error { return nil }),
@@ -65,6 +65,15 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
 		managed.WithRecorder(event.NewAPIRecorder(mgr.GetEventRecorder(name))),
+	}
+
+	if o.Features != nil && o.Features.Enabled(feature.EnableBetaManagementPolicies) {
+		opts = append(opts, managed.WithManagementPolicies())
+	}
+
+	r := managed.NewReconciler(mgr,
+		resource.ManagedKind(v1beta1.Dashboard_GroupVersionKind),
+		opts...,
 	)
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -367,22 +376,6 @@ func isDashboardV2UpToDate(spec v1beta1.DashboardParameters, dashboard *clients.
 	return true
 }
 
-func convertLayout(layout []v1beta1.Layout) []interface{} {
-	result := make([]interface{}, len(layout))
-	for i, l := range layout {
-		result[i] = map[string]interface{}{
-			"i":      l.I,
-			"x":      l.X,
-			"y":      l.Y,
-			"w":      l.W,
-			"h":      l.H,
-			"moved":  l.Moved,
-			"static": l.Static,
-		}
-	}
-	return result
-}
-
 func convertWidgets(widgets []v1beta1.Widget) []interface{} {
 	result := make([]interface{}, len(widgets))
 	for i, w := range widgets {
@@ -491,43 +484,6 @@ func convertMetricsBuilder(builder v1beta1.MetricsBuilder) map[string]interface{
 		result["formulas"] = builder.Formulas
 	}
 
-	return result
-}
-
-func convertVariables(variables map[string]v1beta1.Variable) map[string]interface{} {
-	if variables == nil {
-		return nil
-	}
-
-	result := make(map[string]interface{})
-	for k, v := range variables {
-		variable := map[string]interface{}{
-			"type":          v.Type,
-			"multiSelect":   v.MultiSelect,
-			"showAllOption": v.ShowAllOption,
-		}
-
-		if v.Description != nil {
-			variable["description"] = *v.Description
-		}
-		if v.QueryValue != nil {
-			variable["queryValue"] = *v.QueryValue
-		}
-		if v.CustomValue != nil {
-			variable["customValue"] = *v.CustomValue
-		}
-		if v.TextboxValue != nil {
-			variable["textboxValue"] = *v.TextboxValue
-		}
-		if v.SelectedValue != nil {
-			variable["selectedValue"] = *v.SelectedValue
-		}
-		if v.Sort != nil {
-			variable["sort"] = *v.Sort
-		}
-
-		result[k] = variable
-	}
 	return result
 }
 

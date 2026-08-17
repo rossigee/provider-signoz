@@ -169,6 +169,7 @@ func main() {
 		"probe-conn-timeout", probeConnTimeout.String())
 
 	if *enableManagementPolicies {
+		o.Features.Enable(feature.EnableBetaManagementPolicies)
 		log.Info("Management policies feature enabled")
 	}
 

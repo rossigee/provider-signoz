@@ -146,7 +146,7 @@ func (r *reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 	cfg, err := clients.GetConfigFromProviderConfig(probeCtx, r.kube, pc)
 	if err != nil {
 		log.Error(err, "failed to extract credentials from ProviderConfig")
-		r.recordFailure(req.NamespacedName.String())
+		r.recordFailure(req.String())
 		pc.Status.SetConditions(invalidCredentialsCondition(err, r.cfg.ConnTimeout))
 		return r.updateStatusAndRequeue(ctx, pc, log, err)
 	}
@@ -156,13 +156,13 @@ func (r *reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		log.Error(err, "credentials probe failed",
 			"endpoint", cfg.BaseURL,
 			"fingerprint", fingerprintKey(cfg.BaseURL, cfg.APIKey))
-		r.recordFailure(req.NamespacedName.String())
+		r.recordFailure(req.String())
 		pc.Status.SetConditions(invalidCredentialsCondition(err, r.cfg.ConnTimeout))
 		return r.updateStatusAndRequeue(ctx, pc, log, err)
 	}
 
 	// Probe succeeded.
-	r.recordSuccess(req.NamespacedName.String())
+	r.recordSuccess(req.String())
 	log.Info("ProviderConfig credentials verified", "endpoint", cfg.BaseURL)
 	pc.Status.SetConditions(xpv1.Available())
 	pc.Status.SetConditions(xpv1.Condition{
