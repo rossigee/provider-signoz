@@ -65,13 +65,13 @@ jobs:
         run: go mod vendor
 
       - name: Build provider runtime image
-        run: make VERSION=${{ steps.version.outputs.version }} build
+        run: make VERSION=${{ steps.version.outputs.version }} PLATFORMS=linux_amd64 build
 
       - name: Build Crossplane package (xpkg)
-        run: make VERSION=${{ steps.version.outputs.version }} xpkg.build
+        run: make VERSION=${{ steps.version.outputs.version }} PLATFORMS=linux_amd64 xpkg.build
 
       - name: Push Crossplane package (xpkg)
-        run: make VERSION=${{ steps.version.outputs.version }} "xpkg.release.publish.${{ env.REGISTRY_ORGS }}.provider-signoz"
+        run: make VERSION=${{ steps.version.outputs.version }} PLATFORMS=linux_amd64 "xpkg.release.publish.${{ env.REGISTRY_ORGS }}.provider-signoz"
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
