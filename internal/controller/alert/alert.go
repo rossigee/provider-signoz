@@ -19,6 +19,7 @@ package alert
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
@@ -357,9 +358,121 @@ func isAlertUpToDate(spec v1beta1.AlertParameters, alert *clients.RuleData) bool
 		return false
 	}
 
-	// For simplicity, we'll consider the alert up to date if basic fields match
-	// In a more sophisticated implementation, we would deeply compare the condition
+	// Compare the rendered condition against the live condition. This is
+	// what catches a builder_query schema mismatch (e.g. provider vs SigNoz
+	// v5) - if we always claimed "up to date" the user would never see
+	// drift in the form of repeated PUT attempts.
+	desiredCondition := convertCondition(spec.Condition)
+	return conditionEqual(desiredCondition, alert.Condition)
+}
+
+// conditionEqual compares two condition maps while tolerating known
+// fields that SigNoz may normalise (int vs string for op/matchType,
+// nil vs absent for unit/legend, etc).
+func conditionEqual(desired, observed map[string]interface{}) bool {
+	if desired == nil && observed == nil {
+		return true
+	}
+	if desired == nil || observed == nil {
+		return false
+	}
+
+	for k, dv := range desired {
+		ov, ok := observed[k]
+		if !ok {
+			// Tolerate empty/zero values that SigNoz may strip.
+			if isZeroish(dv) {
+				continue
+			}
+			return false
+		}
+		if !valueEqual(dv, ov) {
+			return false
+		}
+	}
+
+	for k, ov := range observed {
+		if _, ok := desired[k]; ok {
+			continue
+		}
+		if isZeroish(ov) {
+			continue
+		}
+		return false
+	}
+
 	return true
+}
+
+func valueEqual(a, b interface{}) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	// Numeric comparisons - SigNoz sometimes stringifies ints.
+	if af, aok := a.(float64); aok {
+		switch bv := b.(type) {
+		case float64:
+			return af == bv
+		case int:
+			return af == float64(bv)
+		case int64:
+			return af == float64(bv)
+		}
+	}
+	if ai, aok := a.(int); aok {
+		switch bv := b.(type) {
+		case int:
+			return ai == bv
+		case int64:
+			return int64(ai) == bv
+		case float64:
+			return float64(ai) == bv
+		}
+	}
+	// Maps.
+	if am, aok := a.(map[string]interface{}); aok {
+		bm, bok := b.(map[string]interface{})
+		if !bok {
+			return false
+		}
+		return conditionEqual(am, bm)
+	}
+	// Slices.
+	if as, aok := a.([]interface{}); aok {
+		bs, bok := b.([]interface{})
+		if !bok || len(as) != len(bs) {
+			return false
+		}
+		for i := range as {
+			if !valueEqual(as[i], bs[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return a == b
+}
+
+func isZeroish(v interface{}) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case string:
+		return x == ""
+	case int:
+		return x == 0
+	case int64:
+		return x == 0
+	case float64:
+		return x == 0
+	case uint64:
+		return x == 0
+	case []interface{}:
+		return len(x) == 0
+	case map[string]interface{}:
+		return len(x) == 0
+	}
+	return false
 }
 
 func mapsEqual(a, b map[string]string) bool {
@@ -397,64 +510,84 @@ func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
 }
 
 func convertCompositeQuery(query v1beta1.CompositeQuery) map[string]interface{} {
-	// Determine queryType based on available queries
-	queryType := "builder"
-	if len(query.PromQL) > 0 {
+	// Normalise QueryType. The user may supply either the numeric legacy
+	// encoding ("1"=PromQL, "2"=ClickHouse, "3"=Builder) or the symbolic
+	// form ("promql"/"clickhouse_sql"/"builder") that SigNoz expects on
+	// the wire. We map everything to the symbolic form.
+	queryType := strings.ToLower(query.QueryType)
+	switch queryType {
+	case "1":
 		queryType = "promql"
-	} else if len(query.ClickHouse) > 0 {
-		queryType = "clickhouse"
+	case "2":
+		queryType = "clickhouse_sql"
+	case "3":
+		queryType = "builder"
+	}
+	if queryType == "" {
+		if len(query.PromQL) > 0 {
+			queryType = "promql"
+		} else if len(query.ClickHouse) > 0 {
+			queryType = "clickhouse_sql"
+		} else if query.Builder != nil {
+			queryType = "builder"
+		} else {
+			queryType = "builder"
+		}
+	}
+
+	panelType := query.PanelType
+	if panelType == "" {
+		panelType = "graph"
 	}
 
 	result := map[string]interface{}{
 		"queryType": queryType,
-		"panelType": "graph",
-		"unit":      "",
+		"panelType": panelType,
+		"unit":      query.Unit,
 	}
 
 	if len(query.PromQL) > 0 {
-		queries := make([]interface{}, len(query.PromQL))
+		promQueries := make(map[string]interface{}, len(query.PromQL))
 		for i, pq := range query.PromQL {
 			name := pq.Name
 			if name == "" {
 				name = fmt.Sprintf("A%d", i)
 			}
-			promQuery := map[string]interface{}{
-				"type": "promql",
-				"spec": map[string]interface{}{
-					"query":    pq.Query,
-					"legend":   pq.Legend,
-					"name":     name,
-					"disabled": pq.Disabled,
-				},
+			promQueries[name] = map[string]interface{}{
+				"name":     name,
+				"query":    pq.Query,
+				"legend":   pq.Legend,
+				"disabled": pq.Disabled,
+				"stats":    nil,
 			}
-			queries[i] = promQuery
 		}
-		result["queries"] = queries
+		result["promQueries"] = promQueries
 	}
 
 	if len(query.ClickHouse) > 0 {
-		queries := make([]interface{}, len(query.ClickHouse))
+		chQueries := make(map[string]interface{}, len(query.ClickHouse))
 		for i, chq := range query.ClickHouse {
 			name := chq.Name
 			if name == "" {
 				name = fmt.Sprintf("A%d", i)
 			}
-			chQuery := map[string]interface{}{
-				"type": "clickhouse_sql",
-				"spec": map[string]interface{}{
-					"query":    chq.Query,
-					"legend":   chq.Legend,
-					"name":     name,
-					"disabled": chq.Disabled,
-				},
+			chQueries[name] = map[string]interface{}{
+				"name":     name,
+				"query":    chq.Query,
+				"legend":   chq.Legend,
+				"disabled": chq.Disabled,
 			}
-			queries[i] = chQuery
 		}
-		result["queries"] = queries
+		result["chQueries"] = chQueries
 	}
 
 	if query.Builder != nil {
-		result["queries"] = []interface{}{convertQueryBuilder(*query.Builder)}
+		builderQuery := convertQueryBuilder(*query.Builder)
+		name, _ := builderQuery["queryName"].(string)
+		if name == "" {
+			name = "A"
+		}
+		result["builderQueries"] = map[string]interface{}{name: builderQuery}
 	}
 
 	if query.Expression != "" {
@@ -465,8 +598,29 @@ func convertCompositeQuery(query v1beta1.CompositeQuery) map[string]interface{} 
 }
 
 func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
+	name := builder.QueryName
+	if name == "" {
+		name = "A"
+	}
+
+	stepInterval := int64(60)
+	if builder.StepInterval != nil {
+		stepInterval = *builder.StepInterval
+	}
+
+	expression := builder.Expression
+	if expression == "" {
+		expression = name
+	}
+
 	result := map[string]interface{}{
-		"dataSource": builder.DataSource,
+		"queryName":    name,
+		"dataSource":   builder.DataSource,
+		"stepInterval": stepInterval,
+		"expression":   expression,
+		"disabled":     builder.Disabled,
+		"legend":       builder.Legend,
+		"pageSize":     0,
 	}
 
 	if builder.AggregateOperator != "" {
@@ -474,6 +628,18 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 	}
 	if builder.AggregateAttribute != nil {
 		result["aggregateAttribute"] = convertKeyAttribute(*builder.AggregateAttribute)
+	}
+	if builder.TimeAggregation != "" {
+		result["timeAggregation"] = builder.TimeAggregation
+	}
+	if builder.SpaceAggregation != "" {
+		result["spaceAggregation"] = builder.SpaceAggregation
+	}
+	if builder.Temporality != "" {
+		result["temporality"] = builder.Temporality
+	}
+	if builder.ReduceTo != "" {
+		result["reduceTo"] = builder.ReduceTo
 	}
 	if builder.Filters != nil {
 		result["filters"] = convertFilterSet(*builder.Filters)
@@ -506,11 +672,22 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 		}
 		result["orderBy"] = orderBy
 	}
+	if len(builder.SelectColumns) > 0 {
+		selectColumns := make([]interface{}, len(builder.SelectColumns))
+		for i, sc := range builder.SelectColumns {
+			selectColumns[i] = convertKeyAttribute(sc)
+		}
+		result["selectColumns"] = selectColumns
+	}
 	if builder.Limit != nil {
-		result["limit"] = *builder.Limit
+		result["limit"] = uint64(*builder.Limit)
+	} else {
+		result["limit"] = uint64(0)
 	}
 	if builder.Offset != nil {
-		result["offset"] = *builder.Offset
+		result["offset"] = uint64(*builder.Offset)
+	} else {
+		result["offset"] = uint64(0)
 	}
 
 	return result

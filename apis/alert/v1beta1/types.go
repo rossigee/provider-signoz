@@ -101,9 +101,9 @@ type RuleCondition struct {
 
 // CompositeQuery defines a composite query for alerts.
 type CompositeQuery struct {
-	// QueryType defines the type of query (1=PromQL, 2=ClickHouse, 3=Builder).
+	// QueryType defines the type of query (builder|promql|clickhouse_sql).
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum="1";"2";"3"
+	// +kubebuilder:validation:Enum="1";"2";"3";"builder";"promql";"clickhouse_sql"
 	QueryType string `json:"queryType"`
 
 	// PromQL contains PromQL queries.
@@ -121,6 +121,15 @@ type CompositeQuery struct {
 	// Expression combines multiple queries with mathematical operations.
 	// +optional
 	Expression string `json:"expression,omitempty"`
+
+	// PanelType is the panel type for the alert query (e.g. graph, value).
+	// +optional
+	// +kubebuilder:validation:Enum=graph;value;table;list;trace
+	PanelType string `json:"panelType,omitempty"`
+
+	// Unit is the unit of the resulting time series.
+	// +optional
+	Unit string `json:"unit,omitempty"`
 }
 
 // AlertPromQuery defines a PromQL query for alerts.
@@ -161,20 +170,64 @@ type AlertClickHouseQuery struct {
 	Disabled bool `json:"disabled,omitempty"`
 }
 
-// QueryBuilder defines query builder configuration for alerts.
+// QueryBuilder defines a v5 builder query for alerts. Each QueryBuilder
+// maps to one entry in the SigNoz CompositeQuery.builderQueries map keyed
+// by QueryName.
 type QueryBuilder struct {
+	// QueryName is the identifier for this builder query (e.g. "A").
+	// Defaults to "A" if empty.
+	// +optional
+	// +kubebuilder:validation:MaxLength=1
+	QueryName string `json:"queryName,omitempty"`
+
 	// DataSource defines the data source (metrics, logs, traces).
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=metrics;logs;traces
 	DataSource string `json:"dataSource"`
 
-	// AggregateOperator defines the aggregation function.
+	// StepInterval is the step interval in seconds used for the query.
+	// Defaults to 60s.
+	// +optional
+	StepInterval *int64 `json:"stepInterval,omitempty"`
+
+	// Expression is the formula expression for this query. Defaults to
+	// QueryName when empty (i.e. a simple builder query, not a formula).
+	// +optional
+	Expression string `json:"expression,omitempty"`
+
+	// AggregateOperator defines the aggregation function (e.g. sum, avg,
+	// rate, p99). Required for non-metric data sources and for some
+	// metric operators.
 	// +optional
 	AggregateOperator string `json:"aggregateOperator,omitempty"`
 
 	// AggregateAttribute defines what to aggregate on.
 	// +optional
 	AggregateAttribute *KeyAttribute `json:"aggregateAttribute,omitempty"`
+
+	// TimeAggregation is the aggregation across the time dimension
+	// (e.g. rate, sum, avg, increase). Required for metric data sources
+	// that use the v5 space/time aggregation split.
+	// +optional
+	TimeAggregation string `json:"timeAggregation,omitempty"`
+
+	// SpaceAggregation is the aggregation across the label/series
+	// dimension (e.g. sum, avg, min, max, p99). Required for metric data
+	// sources that use the v5 space/time aggregation split.
+	// +optional
+	SpaceAggregation string `json:"spaceAggregation,omitempty"`
+
+	// Temporality is the metric temporality hint (Delta, Cumulative,
+	// Unspecified). SigNoz auto-detects this if omitted.
+	// +optional
+	// +kubebuilder:validation:Enum=Delta;Cumulative;Unspecified
+	Temporality string `json:"temporality,omitempty"`
+
+	// ReduceTo reduces a multi-series result to a single value
+	// (last, sum, avg, min, max).
+	// +optional
+	// +kubebuilder:validation:Enum=last;sum;avg;min;max
+	ReduceTo string `json:"reduceTo,omitempty"`
 
 	// Filters define the query filters.
 	// +optional
@@ -199,6 +252,19 @@ type QueryBuilder struct {
 	// Offset defines the result offset.
 	// +optional
 	Offset *int `json:"offset,omitempty"`
+
+	// SelectColumns restricts the columns returned for logs/traces
+	// queries.
+	// +optional
+	SelectColumns []KeyAttribute `json:"selectColumns,omitempty"`
+
+	// Legend overrides the legend format for the resulting series.
+	// +optional
+	Legend string `json:"legend,omitempty"`
+
+	// Disabled indicates whether this builder query is disabled.
+	// +optional
+	Disabled bool `json:"disabled,omitempty"`
 }
 
 // KeyAttribute defines an attribute for grouping or aggregation.

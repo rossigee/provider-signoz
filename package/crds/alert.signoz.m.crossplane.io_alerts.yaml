@@ -198,8 +198,10 @@ spec:
                                 - type
                                 type: object
                               aggregateOperator:
-                                description: AggregateOperator defines the aggregation
-                                  function.
+                                description: |-
+                                  AggregateOperator defines the aggregation function (e.g. sum, avg,
+                                  rate, p99). Required for non-metric data sources and for some
+                                  metric operators.
                                 type: string
                               dataSource:
                                 description: DataSource defines the data source (metrics,
@@ -208,6 +210,15 @@ spec:
                                 - metrics
                                 - logs
                                 - traces
+                                type: string
+                              disabled:
+                                description: Disabled indicates whether this builder
+                                  query is disabled.
+                                type: boolean
+                              expression:
+                                description: |-
+                                  Expression is the formula expression for this query. Defaults to
+                                  QueryName when empty (i.e. a simple builder query, not a formula).
                                 type: string
                               filters:
                                 description: Filters define the query filters.
@@ -301,6 +312,10 @@ spec:
                                   - op
                                   type: object
                                 type: array
+                              legend:
+                                description: Legend overrides the legend format for
+                                  the resulting series.
+                                type: string
                               limit:
                                 description: Limit defines the result limit.
                                 type: integer
@@ -328,6 +343,73 @@ spec:
                                   - order
                                   type: object
                                 type: array
+                              queryName:
+                                description: |-
+                                  QueryName is the identifier for this builder query (e.g. "A").
+                                  Defaults to "A" if empty.
+                                maxLength: 1
+                                type: string
+                              reduceTo:
+                                description: |-
+                                  ReduceTo reduces a multi-series result to a single value
+                                  (last, sum, avg, min, max).
+                                enum:
+                                - last
+                                - sum
+                                - avg
+                                - min
+                                - max
+                                type: string
+                              selectColumns:
+                                description: |-
+                                  SelectColumns restricts the columns returned for logs/traces
+                                  queries.
+                                items:
+                                  description: KeyAttribute defines an attribute for
+                                    grouping or aggregation.
+                                  properties:
+                                    dataType:
+                                      description: DataType is the data type of the
+                                        attribute.
+                                      type: string
+                                    key:
+                                      description: Key is the attribute key.
+                                      type: string
+                                    type:
+                                      description: Type is the attribute type.
+                                      type: string
+                                  required:
+                                  - key
+                                  - type
+                                  type: object
+                                type: array
+                              spaceAggregation:
+                                description: |-
+                                  SpaceAggregation is the aggregation across the label/series
+                                  dimension (e.g. sum, avg, min, max, p99). Required for metric data
+                                  sources that use the v5 space/time aggregation split.
+                                type: string
+                              stepInterval:
+                                description: |-
+                                  StepInterval is the step interval in seconds used for the query.
+                                  Defaults to 60s.
+                                format: int64
+                                type: integer
+                              temporality:
+                                description: |-
+                                  Temporality is the metric temporality hint (Delta, Cumulative,
+                                  Unspecified). SigNoz auto-detects this if omitted.
+                                enum:
+                                - Delta
+                                - Cumulative
+                                - Unspecified
+                                type: string
+                              timeAggregation:
+                                description: |-
+                                  TimeAggregation is the aggregation across the time dimension
+                                  (e.g. rate, sum, avg, increase). Required for metric data sources
+                                  that use the v5 space/time aggregation split.
+                                type: string
                             required:
                             - dataSource
                             type: object
@@ -359,6 +441,16 @@ spec:
                             description: Expression combines multiple queries with
                               mathematical operations.
                             type: string
+                          panelType:
+                            description: PanelType is the panel type for the alert
+                              query (e.g. graph, value).
+                            enum:
+                            - graph
+                            - value
+                            - table
+                            - list
+                            - trace
+                            type: string
                           promQL:
                             description: PromQL contains PromQL queries.
                             items:
@@ -384,12 +476,17 @@ spec:
                               type: object
                             type: array
                           queryType:
-                            description: QueryType defines the type of query (1=PromQL,
-                              2=ClickHouse, 3=Builder).
+                            description: QueryType defines the type of query (builder|promql|clickhouse_sql).
                             enum:
                             - "1"
                             - "2"
                             - "3"
+                            - builder
+                            - promql
+                            - clickhouse_sql
+                            type: string
+                          unit:
+                            description: Unit is the unit of the resulting time series.
                             type: string
                         required:
                         - queryType
