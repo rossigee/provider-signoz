@@ -98,7 +98,6 @@ jobs:
             apiVersion: pkg.crossplane.io/v1
             kind: Provider
             metadata:
-        allowUpdates: true
               name: provider-signoz
             spec:
               package: ${{ env.REGISTRY_ORGS }}/provider-signoz:${{ steps.version.outputs.version }}
