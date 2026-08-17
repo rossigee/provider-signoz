@@ -28,6 +28,7 @@ import (
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -166,10 +167,11 @@ func (r *reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 	log.Info("ProviderConfig credentials verified", "endpoint", cfg.BaseURL)
 	pc.Status.SetConditions(xpv1.Available())
 	pc.Status.SetConditions(xpv1.Condition{
-		Type:    TypeCredentialsValid,
-		Status:  corev1.ConditionTrue,
-		Reason:  ReasonCredentialsAccepted,
-		Message: "Credentials accepted by upstream Signoz API.",
+		Type:               TypeCredentialsValid,
+		Status:             corev1.ConditionTrue,
+		Reason:             ReasonCredentialsAccepted,
+		Message:            "Credentials accepted by upstream Signoz API.",
+		LastTransitionTime: metav1.Now(),
 	})
 
 	if err := r.writeStatus(ctx, pc); err != nil {
@@ -249,8 +251,9 @@ func (r *reconciler) recordSuccess(key string) {
 // scraping event strings.
 func invalidCredentialsCondition(err error, probeTimeout time.Duration) xpv1.Condition {
 	c := xpv1.Condition{
-		Type:   TypeCredentialsValid,
-		Status: corev1.ConditionFalse,
+		Type:               TypeCredentialsValid,
+		Status:             corev1.ConditionFalse,
+		LastTransitionTime: metav1.Now(),
 	}
 
 	switch {
