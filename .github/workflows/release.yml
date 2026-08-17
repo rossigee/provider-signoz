@@ -61,26 +61,17 @@ jobs:
       - name: Run linting
         run: make lint
 
-      - name: Build provider binary
-        run: |
-          mkdir -p bin/linux_amd64
-          VERSION="${{ steps.version.outputs.version }}" \
-          go build -v -o bin/linux_amd64/provider \
-            -ldflags "-X github.com/rossigee/provider-signoz/internal/version.Version=${{ steps.version.outputs.version }}" \
-            ./cmd/provider
+      - name: Vendor dependencies
+        run: go mod vendor
 
-      - name: Build and push Docker image (amd64)
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./cluster/images/provider-signoz/Dockerfile
-          build-args: |
-            TARGETOS=linux
-            TARGETARCH=amd64
-          tags: |
-            ${{ env.REGISTRY_ORGS }}/provider-signoz:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY_ORGS }}/provider-signoz:latest
-          push: true
+      - name: Build provider runtime image
+        run: make VERSION=${{ steps.version.outputs.version }} build
+
+      - name: Build Crossplane package (xpkg)
+        run: make VERSION=${{ steps.version.outputs.version }} xpkg.build
+
+      - name: Push Crossplane package (xpkg)
+        run: make VERSION=${{ steps.version.outputs.version }} "xpkg.release.publish.${{ env.REGISTRY_ORGS }}.provider-signoz"
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
