@@ -383,7 +383,115 @@ func isDashboardV2UpToDate(spec v1beta1.DashboardParameters, dashboard *clients.
 		}
 	}
 
+	if !isVariablesUpToDate(spec.Variables, dashboard.Spec.Variables) {
+		return false
+	}
+
 	return true
+}
+
+// isVariablesUpToDate compares the desired Variables map against the
+// observed SigNoz v6 variables array, keyed by each variable's spec.name.
+// Same rationale as isPanelUpToDate: without this, editing an existing
+// variable's query/value while nothing else on the dashboard changes would
+// be invisible to Observe() and Update() would never be called.
+func isVariablesUpToDate(variables map[string]v1beta1.Variable, observed []interface{}) bool {
+	if len(variables) != len(observed) {
+		return false
+	}
+
+	observedByName := make(map[string]interface{}, len(observed))
+	for _, ov := range observed {
+		ovMap, ok := ov.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		name, ok := nestedString(ovMap, "spec", "name")
+		if !ok {
+			return false
+		}
+		observedByName[name] = ov
+	}
+
+	for name, v := range variables {
+		ov, exists := observedByName[name]
+		if !exists {
+			return false
+		}
+		if !isVariableUpToDate(name, v, ov) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isVariableUpToDate compares one desired Variable against its observed
+// SigNoz representation, using convertVariableToV2 as the single source of
+// truth for what Create/Update actually sends so the comparison can't drift
+// from it. Only compares fields convertVariableToV2 sets - name, and either
+// the textbox value or the plugin kind + query/custom value + allowMultiple/
+// allowAllValue - since the API fills in additional defaults (display,
+// sort, capturingRegexp, etc.) this provider never sends.
+func isVariableUpToDate(name string, v v1beta1.Variable, observed interface{}) bool {
+	expected := convertVariableToV2(name, v)
+
+	observedMap, ok := observed.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if expected["kind"] != observedMap["kind"] {
+		return false
+	}
+
+	expectedSpec, ok := expected["spec"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	observedSpec, ok := observedMap["spec"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if expectedSpec["name"] != observedSpec["name"] {
+		return false
+	}
+
+	if v.Type == "textbox" {
+		return expectedSpec["value"] == observedSpec["value"]
+	}
+
+	if expectedSpec["allowMultiple"] != observedSpec["allowMultiple"] {
+		return false
+	}
+	if expectedSpec["allowAllValue"] != observedSpec["allowAllValue"] {
+		return false
+	}
+
+	expectedPlugin, ok := expectedSpec["plugin"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	observedPlugin, ok := observedSpec["plugin"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if expectedPlugin["kind"] != observedPlugin["kind"] {
+		return false
+	}
+
+	expectedPluginSpec, ok := expectedPlugin["spec"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	observedPluginSpec, ok := observedPlugin["spec"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	if v.Type == "custom" {
+		return expectedPluginSpec["customValue"] == observedPluginSpec["customValue"]
+	}
+	return expectedPluginSpec["queryValue"] == observedPluginSpec["queryValue"]
 }
 
 // isPanelUpToDate compares a desired widget against the observed SigNoz v2

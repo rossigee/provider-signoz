@@ -348,6 +348,77 @@ func TestConvertVariablesToV2_Empty(t *testing.T) {
 	}
 }
 
+// TestIsDashboardV2UpToDate_DetectsVariableDrift guards against the same
+// bug class as TestIsDashboardV2UpToDate_DetectsQueryDrift, but for
+// variables: since isDashboardV2UpToDate now compares variables too,
+// editing a variable's query while nothing else on the dashboard changes
+// must be detected, or Update() would silently never be called for it.
+func TestIsDashboardV2UpToDate_DetectsVariableDrift(t *testing.T) {
+	spec := v1beta1.DashboardParameters{
+		Title: "CoreDNS Monitoring",
+		Variables: map[string]v1beta1.Variable{
+			"host_name": {
+				Type:       "query",
+				QueryValue: stringPtr(`label_replace(coredns_dns_requests_total, "host_name", "$1", "host.name", "(.+)")`),
+			},
+		},
+	}
+
+	matching := &clients.DashboardV2Data{
+		Spec: clients.DashboardV2Spec{
+			Display: &clients.DashboardV2Display{Name: "CoreDNS Monitoring"},
+			Panels:  map[string]interface{}{},
+			Variables: []interface{}{
+				map[string]interface{}{
+					"kind": "ListVariable",
+					"spec": map[string]interface{}{
+						"name": "host_name",
+						"plugin": map[string]interface{}{
+							"kind": "signoz/QueryVariable",
+							"spec": map[string]interface{}{
+								"queryValue": `label_replace(coredns_dns_requests_total, "host_name", "$1", "host.name", "(.+)")`,
+							},
+						},
+						"allowMultiple": false,
+						"allowAllValue": false,
+					},
+				},
+			},
+		},
+	}
+	if !isDashboardV2UpToDate(spec, matching) {
+		t.Error("expected dashboard to be up to date when observed variable matches spec")
+	}
+
+	// Same variable name, dashboard otherwise identical, but the live
+	// query string is stale - must be detected as drift.
+	drifted := &clients.DashboardV2Data{
+		Spec: clients.DashboardV2Spec{
+			Display: &clients.DashboardV2Display{Name: "CoreDNS Monitoring"},
+			Panels:  map[string]interface{}{},
+			Variables: []interface{}{
+				map[string]interface{}{
+					"kind": "ListVariable",
+					"spec": map[string]interface{}{
+						"name": "host_name",
+						"plugin": map[string]interface{}{
+							"kind": "signoz/QueryVariable",
+							"spec": map[string]interface{}{
+								"queryValue": "coredns_dns_requests_total", // stale
+							},
+						},
+						"allowMultiple": false,
+						"allowAllValue": false,
+					},
+				},
+			},
+		},
+	}
+	if isDashboardV2UpToDate(spec, drifted) {
+		t.Error("expected dashboard to be detected as out of date when the live variable query differs from spec")
+	}
+}
+
 func stringPtr(s string) *string {
 	return &s
 }
