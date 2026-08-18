@@ -383,11 +383,7 @@ func isDashboardV2UpToDate(spec v1beta1.DashboardParameters, dashboard *clients.
 		}
 	}
 
-	if !isVariablesUpToDate(spec.Variables, dashboard.Spec.Variables) {
-		return false
-	}
-
-	return true
+	return isVariablesUpToDate(spec.Variables, dashboard.Spec.Variables)
 }
 
 // isVariablesUpToDate compares the desired Variables map against the
