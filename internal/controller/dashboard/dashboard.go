@@ -366,14 +366,160 @@ func isDashboardV2UpToDate(spec v1beta1.DashboardParameters, dashboard *clients.
 		return false
 	}
 
-	// Compare each widget (by ID)
+	// Compare each widget's content against the observed panel. Matching
+	// on ID alone is not enough: editing a query string inside an existing
+	// widget keeps the same ID and count, so that drift must be detected
+	// here or it is silently never applied (Update is never called).
 	for _, w := range spec.Widgets {
-		if _, exists := dashboard.Spec.Panels[w.ID]; !exists {
+		panel, exists := dashboard.Spec.Panels[w.ID]
+		if !exists {
+			return false
+		}
+		if !isPanelUpToDate(w, panel) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// isPanelUpToDate compares a desired widget against the observed SigNoz v2
+// panel returned by the API. It only compares the fields convertToV2 /
+// convertQueryToV2 actually set - display name, Y-axis unit, and each
+// sub-query's type/query/legend/name/disabled - since the live API response
+// fills in many additional default fields (chart appearance, thresholds,
+// legend position, etc.) that this provider never sends and must not be
+// diffed against.
+func isPanelUpToDate(w v1beta1.Widget, panel interface{}) bool {
+	panelMap, ok := panel.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	specMap, ok := panelMap["spec"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	displayMap, ok := specMap["display"].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if name, _ := displayMap["name"].(string); name != w.Title {
+		return false
+	}
+
+	if w.YAxisUnit != nil {
+		unit, ok := nestedString(specMap, "plugin", "spec", "formatting", "unit")
+		if !ok || unit != *w.YAxisUnit {
+			return false
+		}
+	}
+
+	observedQueries, ok := extractQuerySpecs(specMap)
+	if !ok {
+		return false
+	}
+
+	// convertQueryToV2 returns a single composite-query object; wrap it the
+	// same way convertToV2 does (panel.spec.queries = [compositeQuery]) so
+	// extractQuerySpecs can walk both observed and expected the same way.
+	expectedWrapped := map[string]interface{}{
+		"queries": []interface{}{convertQueryToV2(w.Query)},
+	}
+	expectedQueries, ok := extractQuerySpecs(expectedWrapped)
+	if !ok {
+		return false
+	}
+
+	if len(observedQueries) != len(expectedQueries) {
+		return false
+	}
+	for i := range expectedQueries {
+		if expectedQueries[i] != observedQueries[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// extractQuerySpecs walks a panel/query spec map down to the list of
+// individual sub-queries (compositeQuery.spec.plugin.spec.queries) and
+// returns a normalized, comparable representation of each one's type,
+// query string, legend, name and disabled flag.
+func extractQuerySpecs(widgetSpecMap map[string]interface{}) ([]string, bool) {
+	queriesRaw, ok := widgetSpecMap["queries"].([]interface{})
+	if !ok || len(queriesRaw) == 0 {
+		return nil, false
+	}
+	compQuery, ok := queriesRaw[0].(map[string]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	innerQueries, ok := nestedSlice(compQuery, "spec", "plugin", "spec", "queries")
+	if !ok {
+		return nil, false
+	}
+
+	result := make([]string, 0, len(innerQueries))
+	for _, iq := range innerQueries {
+		iqMap, ok := iq.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		qType, _ := iqMap["type"].(string)
+		qSpec, ok := iqMap["spec"].(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		result = append(result, fmt.Sprintf("%s|%v|%v|%v|%v",
+			qType, qSpec["query"], qSpec["legend"], qSpec["name"], qSpec["disabled"]))
+	}
+
+	return result, true
+}
+
+// nestedString descends a chain of map[string]interface{} keys and returns
+// the final value as a string, or false if any step of the path is missing
+// or not the expected type.
+func nestedString(m map[string]interface{}, keys ...string) (string, bool) {
+	v, ok := nestedValue(m, keys...)
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+// nestedSlice descends a chain of map[string]interface{} keys and returns
+// the final value as a []interface{}, or false if any step of the path is
+// missing or not the expected type.
+func nestedSlice(m map[string]interface{}, keys ...string) ([]interface{}, bool) {
+	v, ok := nestedValue(m, keys...)
+	if !ok {
+		return nil, false
+	}
+	s, ok := v.([]interface{})
+	return s, ok
+}
+
+// nestedValue descends a chain of map[string]interface{} keys, returning
+// the value at the end of the path or false if any intermediate step is
+// missing or not a map.
+func nestedValue(m map[string]interface{}, keys ...string) (interface{}, bool) {
+	var cur interface{} = m
+	for _, k := range keys {
+		curMap, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		cur, ok = curMap[k]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 func convertWidgets(widgets []v1beta1.Widget) []interface{} {

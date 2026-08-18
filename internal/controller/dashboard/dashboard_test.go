@@ -90,6 +90,108 @@ func TestIsDashboardUpToDate(t *testing.T) {
 	}
 }
 
+// TestIsDashboardV2UpToDate_DetectsQueryDrift reproduces the bug where
+// editing a widget's query string (same widget ID, same widget count) was
+// invisible to Observe(): isDashboardV2UpToDate previously only compared
+// widget IDs and count, never the query content, so Update() was never
+// called and the live SigNoz dashboard silently diverged from spec forever.
+func TestIsDashboardV2UpToDate_DetectsQueryDrift(t *testing.T) {
+	widget := v1beta1.Widget{
+		ID:        "dns-query-rate",
+		Title:     "DNS Query Rate",
+		PanelType: "graph",
+		Query: v1beta1.Query{
+			QueryType: "1",
+			PromQL: []v1beta1.PromQuery{
+				{Query: "rate(coredns_dns_requests_total[5m])", Name: stringPtr("Queries/sec")},
+			},
+		},
+		YAxisUnit: stringPtr("requests/sec"),
+	}
+	spec := v1beta1.DashboardParameters{
+		Title:   "CoreDNS Monitoring",
+		Widgets: []v1beta1.Widget{widget},
+	}
+
+	// Observed panel matches the desired widget exactly.
+	matching := &clients.DashboardV2Data{
+		Spec: clients.DashboardV2Spec{
+			Display: &clients.DashboardV2Display{Name: "CoreDNS Monitoring"},
+			Panels: map[string]interface{}{
+				"dns-query-rate": panelFixture(
+					"DNS Query Rate", "requests/sec",
+					"promql", "rate(coredns_dns_requests_total[5m])", "", "Queries/sec", false,
+				),
+			},
+		},
+	}
+	if !isDashboardV2UpToDate(spec, matching) {
+		t.Error("expected dashboard to be up to date when observed panel matches spec")
+	}
+
+	// Same widget ID and widget count, but the live query string is the
+	// stale/incorrect one - this is exactly the scenario that went
+	// undetected before the fix.
+	drifted := &clients.DashboardV2Data{
+		Spec: clients.DashboardV2Spec{
+			Display: &clients.DashboardV2Display{Name: "CoreDNS Monitoring"},
+			Panels: map[string]interface{}{
+				"dns-query-rate": panelFixture(
+					"DNS Query Rate", "requests/sec",
+					"promql", "rate(coredns_dns_request_count_total[5m])", "", "Queries/sec", false,
+				),
+			},
+		},
+	}
+	if isDashboardV2UpToDate(spec, drifted) {
+		t.Error("expected dashboard to be detected as out of date when the live query string differs from spec")
+	}
+}
+
+// panelFixture builds a minimal V2 panel map matching the shape convertToV2
+// produces, for use as observed API state in tests.
+func panelFixture(title, unit, queryType, query, legend, name string, disabled bool) map[string]interface{} {
+	return map[string]interface{}{
+		"kind": "Panel",
+		"spec": map[string]interface{}{
+			"display": map[string]interface{}{
+				"name": title,
+			},
+			"plugin": map[string]interface{}{
+				"kind": "signoz/TimeSeriesPanel",
+				"spec": map[string]interface{}{
+					"formatting": map[string]interface{}{
+						"unit": unit,
+					},
+				},
+			},
+			"queries": []interface{}{
+				map[string]interface{}{
+					"kind": "time_series",
+					"spec": map[string]interface{}{
+						"plugin": map[string]interface{}{
+							"kind": "signoz/CompositeQuery",
+							"spec": map[string]interface{}{
+								"queries": []interface{}{
+									map[string]interface{}{
+										"type": queryType,
+										"spec": map[string]interface{}{
+											"query":    query,
+											"legend":   legend,
+											"name":     name,
+											"disabled": disabled,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func TestConvertQueryToV2_ClickHouse(t *testing.T) {
 	query := v1beta1.Query{
 		QueryType: "2",
