@@ -19,6 +19,7 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -225,6 +226,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		cr.Spec.ForProvider.Tags,
 		cr.Spec.ForProvider.Widgets,
 		cr.Spec.ForProvider.Layout,
+		cr.Spec.ForProvider.Variables,
 	)
 
 	created, err := c.service.CreateDashboardV2(ctx, dashboardV2)
@@ -270,6 +272,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		cr.Spec.ForProvider.Tags,
 		cr.Spec.ForProvider.Widgets,
 		cr.Spec.ForProvider.Layout,
+		cr.Spec.ForProvider.Variables,
 	)
 
 	_, err := c.service.UpdateDashboardV2(ctx, dashboardID, dashboardV2)
@@ -633,7 +636,7 @@ func convertMetricsBuilder(builder v1beta1.MetricsBuilder) map[string]interface{
 	return result
 }
 
-func convertToV2(title, description string, tags []string, widgets []v1beta1.Widget, layout []v1beta1.Layout) *clients.DashboardV2Data {
+func convertToV2(title, description string, tags []string, widgets []v1beta1.Widget, layout []v1beta1.Layout, variables map[string]v1beta1.Variable) *clients.DashboardV2Data {
 	v2name := strings.ToLower(strings.ReplaceAll(title, " ", "-"))
 	v2 := &clients.DashboardV2Data{
 		Name:          v2name,
@@ -645,7 +648,7 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 				Description: description,
 			},
 			Panels:     make(map[string]interface{}),
-			Variables:  []interface{}{},
+			Variables:  convertVariablesToV2(variables),
 			Layouts:    []interface{}{},
 		},
 	}
@@ -717,6 +720,87 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 	}
 
 	return v2
+}
+
+// convertVariablesToV2 converts the CRD's Variables map into the []interface{}
+// array the SigNoz v6 API expects. Sorted by name for deterministic output -
+// map iteration order is otherwise random, which would make every Create/
+// Update payload differ from the last for no reason.
+func convertVariablesToV2(variables map[string]v1beta1.Variable) []interface{} {
+	if len(variables) == 0 {
+		return []interface{}{}
+	}
+
+	names := make([]string, 0, len(variables))
+	for name := range variables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	result := make([]interface{}, 0, len(names))
+	for _, name := range names {
+		result = append(result, convertVariableToV2(name, variables[name]))
+	}
+	return result
+}
+
+// convertVariableToV2 converts a single CRD Variable into a SigNoz v6
+// dashboard variable object. The v6 API distinguishes "TextVariable" (a
+// plain text/constant value) from "ListVariable" (a dropdown backed by
+// either a query or a fixed custom value list, via a nested plugin.kind of
+// signoz/QueryVariable or signoz/CustomVariable respectively) - this
+// mapping and the exact field names (queryValue, customValue, value,
+// allowMultiple, allowAllValue) were confirmed against the live SigNoz v2
+// dashboards API, since the API rejects unknown fields outright.
+func convertVariableToV2(name string, v v1beta1.Variable) map[string]interface{} {
+	if v.Type == "textbox" {
+		value := ""
+		if v.TextboxValue != nil {
+			value = *v.TextboxValue
+		}
+		return map[string]interface{}{
+			"kind": "TextVariable",
+			"spec": map[string]interface{}{
+				"name":  name,
+				"value": value,
+			},
+		}
+	}
+
+	pluginKind := "signoz/QueryVariable"
+	pluginSpec := map[string]interface{}{}
+	if v.Type == "custom" {
+		pluginKind = "signoz/CustomVariable"
+		customValue := ""
+		if v.CustomValue != nil {
+			customValue = *v.CustomValue
+		}
+		pluginSpec["customValue"] = customValue
+	} else {
+		queryValue := ""
+		if v.QueryValue != nil {
+			queryValue = *v.QueryValue
+		}
+		pluginSpec["queryValue"] = queryValue
+	}
+
+	spec := map[string]interface{}{
+		"name": name,
+		"plugin": map[string]interface{}{
+			"kind": pluginKind,
+			"spec": pluginSpec,
+		},
+		"allowMultiple": v.MultiSelect,
+		"allowAllValue": v.ShowAllOption,
+	}
+	if v.Sort != nil {
+		spec["sort"] = *v.Sort
+	}
+
+	return map[string]interface{}{
+		"kind": "ListVariable",
+		"spec": spec,
+	}
 }
 
 func convertQueryToV2(query v1beta1.Query) map[string]interface{} {

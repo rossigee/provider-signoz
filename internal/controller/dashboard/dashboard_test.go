@@ -266,6 +266,88 @@ func TestConvertQueryToV2_PromQL(t *testing.T) {
 	}
 }
 
+// TestConvertVariablesToV2 locks in the SigNoz v6 dashboard variable schema
+// reverse-engineered against the live API (which rejects unknown fields
+// outright, so this shape is confirmed, not guessed): a "query" variable is
+// {kind: ListVariable, spec: {name, plugin: {kind: signoz/QueryVariable,
+// spec: {queryValue}}}}, "custom" swaps in signoz/CustomVariable +
+// customValue, and "textbox" is the simpler {kind: TextVariable, spec:
+// {name, value}} with no plugin wrapper at all.
+func TestConvertVariablesToV2(t *testing.T) {
+	vars := map[string]v1beta1.Variable{
+		"host_name": {
+			Type:          "query",
+			QueryValue:    stringPtr(`label_replace(coredns_dns_requests_total, "host_name", "$1", "host.name", "(.+)")`),
+			MultiSelect:   true,
+			ShowAllOption: true,
+		},
+		"environment": {
+			Type:        "custom",
+			CustomValue: stringPtr("prod,staging,dev"),
+		},
+		"note": {
+			Type:         "textbox",
+			TextboxValue: stringPtr("default note"),
+		},
+	}
+
+	result := convertVariablesToV2(vars)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 variables, got %d", len(result))
+	}
+
+	// Sorted alphabetically: environment, host_name, note.
+	env := result[0].(map[string]interface{})
+	if env["kind"] != "ListVariable" {
+		t.Errorf("environment: expected kind ListVariable, got %v", env["kind"])
+	}
+	envSpec := env["spec"].(map[string]interface{})
+	envPlugin := envSpec["plugin"].(map[string]interface{})
+	if envPlugin["kind"] != "signoz/CustomVariable" {
+		t.Errorf("environment: expected plugin kind signoz/CustomVariable, got %v", envPlugin["kind"])
+	}
+	envPluginSpec := envPlugin["spec"].(map[string]interface{})
+	if envPluginSpec["customValue"] != "prod,staging,dev" {
+		t.Errorf("environment: expected customValue 'prod,staging,dev', got %v", envPluginSpec["customValue"])
+	}
+
+	host := result[1].(map[string]interface{})
+	hostSpec := host["spec"].(map[string]interface{})
+	if hostSpec["name"] != "host_name" {
+		t.Errorf("expected name host_name, got %v", hostSpec["name"])
+	}
+	if hostSpec["allowMultiple"] != true || hostSpec["allowAllValue"] != true {
+		t.Errorf("expected allowMultiple/allowAllValue true, got %v/%v", hostSpec["allowMultiple"], hostSpec["allowAllValue"])
+	}
+	hostPlugin := hostSpec["plugin"].(map[string]interface{})
+	if hostPlugin["kind"] != "signoz/QueryVariable" {
+		t.Errorf("host_name: expected plugin kind signoz/QueryVariable, got %v", hostPlugin["kind"])
+	}
+	hostPluginSpec := hostPlugin["spec"].(map[string]interface{})
+	if hostPluginSpec["queryValue"] != *vars["host_name"].QueryValue {
+		t.Errorf("host_name: queryValue not passed through correctly, got %v", hostPluginSpec["queryValue"])
+	}
+
+	note := result[2].(map[string]interface{})
+	if note["kind"] != "TextVariable" {
+		t.Errorf("note: expected kind TextVariable, got %v", note["kind"])
+	}
+	noteSpec := note["spec"].(map[string]interface{})
+	if noteSpec["value"] != "default note" {
+		t.Errorf("note: expected value 'default note', got %v", noteSpec["value"])
+	}
+	if _, hasPlugin := noteSpec["plugin"]; hasPlugin {
+		t.Error("note: TextVariable should not have a plugin field")
+	}
+}
+
+func TestConvertVariablesToV2_Empty(t *testing.T) {
+	result := convertVariablesToV2(nil)
+	if len(result) != 0 {
+		t.Errorf("expected empty slice for nil variables, got %d entries", len(result))
+	}
+}
+
 func stringPtr(s string) *string {
 	return &s
 }
