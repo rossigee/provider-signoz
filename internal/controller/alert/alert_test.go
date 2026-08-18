@@ -189,8 +189,11 @@ func TestConvertQueryBuilder_MetricAggregation(t *testing.T) {
 	if result["source"] != "meter" {
 		t.Errorf("Expected source meter, got %v", result["source"])
 	}
-	if step, ok := result["stepInterval"].(int64); !ok || step != 60 {
-		t.Errorf("Expected stepInterval 60 (default), got %v", result["stepInterval"])
+	// stepInterval is emitted as float64 (the canonical JSON number type) so it
+	// matches the float64 decoded from the SigNoz GET response; see the
+	// int64-vs-float64 drift fix in convertQueryBuilder.
+	if step, ok := result["stepInterval"].(float64); !ok || step != 60 {
+		t.Errorf("Expected stepInterval float64 60 (default), got %T(%v)", result["stepInterval"], result["stepInterval"])
 	}
 
 	rawAggs, ok := result["aggregations"].([]interface{})
@@ -394,6 +397,34 @@ func keysOf(m map[string]interface{}) []string {
 	return out
 }
 
+// TestValueEqual_NumericKindTolerance locks in the int64-vs-float64 drift fix.
+// The converter emits numeric fields (e.g. stepInterval) as Go int64/int while
+// the rules API returns JSON numbers that decode to float64; matching must
+// succeed across all numeric kinds, otherwise every observe loop detects a
+// phantom diff and re-PUTs the rule ("type-shape" / "op-as-array" drift class).
+func TestValueEqual_NumericKindTolerance(t *testing.T) {
+	cases := []struct {
+		name string
+		a, b interface{}
+		want bool
+	}{
+		{"int64 vs float64", int64(60), float64(60), true},
+		{"float64 vs int64", float64(60), int64(60), true},
+		{"int vs float64", int(60), float64(60), true},
+		{"float64 vs float64", float64(1), float64(1), true},
+		{"int64 unequal", int64(60), float64(61), false},
+		{"number vs stringified number", float64(1), "1", true},
+		{"mismatch kind", "x", 1, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := valueEqual(tc.a, tc.b); got != tc.want {
+				t.Errorf("valueEqual(%T(%v), %T(%v)) = %v, want %v", tc.a, tc.a, tc.b, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
 func intPtr(i int) *int {
 	return &i
 }
@@ -446,5 +477,125 @@ func TestConvertQueryBuilder_FilterExpressionTakesPrecedence(t *testing.T) {
 	filter := result["filter"].(map[string]interface{})
 	if filter["expression"] != "job_name = 'blackbox_dns_external' AND zone = 'bankrut'" {
 		t.Errorf("expected raw expression to take precedence, got %v", filter["expression"])
+	}
+}
+
+// TestConvertCondition_OpEmittedAsString guards against the feared "op-as-array"
+// drift. SigNoz 0.137.x (schemaVersion v1 / "v5") reports condition.op, target
+// and matchType as scalar values (op is a string such as ">", target is a
+// number, matchType is a stringified number). If the converter ever emitted op
+// as a slice (e.g. []string{">"}) the Observe comparison would perpetually
+// drift and the reconciler would fight itself. This test pins the scalar wire
+// shape so a regression is caught at build time instead of in production.
+func TestConvertCondition_OpEmittedAsString(t *testing.T) {
+	cond := v1beta1.RuleCondition{
+		CompositeQuery: v1beta1.CompositeQuery{QueryType: "3"},
+		CompareOp:      ">",
+		Target:         float64Ptr(1500),
+		MatchType:      intPtr(1),
+	}
+
+	got := convertCondition(cond)
+
+	// op must be a scalar string, never []interface{}.
+	op, ok := got["op"].(string)
+	if !ok || op != ">" {
+		t.Fatalf("expected op to be string \">\", got %T(%v)", got["op"], got["op"])
+	}
+	if _, isSlice := got["op"].([]interface{}); isSlice {
+		t.Fatalf("op must not be emitted as an array (op-as-array drift)")
+	}
+
+	mt, ok := got["matchType"].(string)
+	if !ok || mt != "1" {
+		t.Fatalf("expected matchType string \"1\", got %T(%v)", got["matchType"], got["matchType"])
+	}
+
+	// target must be a numeric scalar, not a slice.
+	switch got["target"].(type) {
+	case float64, int, int64:
+	default:
+		t.Fatalf("expected target numeric scalar, got %T(%v)", got["target"], got["target"])
+	}
+
+	// selectedQueryName default must be a string.
+	if got["selectedQueryName"] != "A" {
+		t.Errorf("expected selectedQueryName \"A\", got %v", got["selectedQueryName"])
+	}
+}
+
+// TestConditionEqual_FilterExpressionRoundTrip verifies that a desired
+// condition carrying a filterExpression compares equal to the observed v1 GET
+// response shape (which carries compositeQuery.queries[].spec.filter.expression
+// alongside scalar op/target/matchType). This is the canary-coredns-panics
+// round-trip in bug-free form: no drift on every reconcile.
+func TestConditionEqual_FilterExpressionRoundTrip(t *testing.T) {
+	cond := v1beta1.RuleCondition{
+		CompareOp: ">",
+		Target:    float64Ptr(0),
+		MatchType: intPtr(1),
+		CompositeQuery: v1beta1.CompositeQuery{
+			QueryType: "3",
+			Builder: &v1beta1.QueryBuilder{
+				QueryName:         "A",
+				DataSource:        "metrics",
+				AggregateOperator: "rate",
+				AggregateAttribute: &v1beta1.KeyAttribute{
+					Key:      "coredns_panics_total",
+					Type:     "Gauge",
+					DataType: "float64",
+				},
+				TimeAggregation:  "rate",
+				SpaceAggregation: "sum",
+				FilterExpression: "kubernetes_namespace = 'kube-system'",
+			},
+		},
+	}
+
+	desired := convertCondition(cond)
+
+	// observed mirrors the live SigNoz v1 GET response for this rule.
+	observed := map[string]interface{}{
+		"compositeQuery": map[string]interface{}{
+			"queryType": "builder",
+			"panelType": "graph",
+			"unit":      "",
+			"queries": []interface{}{
+				map[string]interface{}{
+					"type": "builder_query",
+					"spec": map[string]interface{}{
+						"name":         "A",
+						"stepInterval": float64(60),
+						"signal":       "metrics",
+						"source":       "meter",
+						"aggregations": []interface{}{
+							map[string]interface{}{
+								"metricName":       "coredns_panics_total",
+								"temporality":      "",
+								"timeAggregation":  "rate",
+								"spaceAggregation": "sum",
+							},
+						},
+						"disabled": false,
+						"filter":   map[string]interface{}{"expression": "kubernetes_namespace = 'kube-system'"},
+						"legend":   "",
+					},
+				},
+			},
+		},
+		"op":                ">",
+		"target":            float64(0),
+		"matchType":         "1",
+		"selectedQueryName": "A",
+	}
+
+	if !conditionEqual(desired, observed) {
+		t.Errorf("expected desired condition (with filterExpression) to match observed live shape; desired=%v", desired)
+	}
+
+	// A divergent expression must register as drift.
+	observed["compositeQuery"].(map[string]interface{})["queries"].([]interface{})[0].(map[string]interface{})["spec"].(map[string]interface{})["filter"].(map[string]interface{})["expression"] = "kubernetes_namespace = 'other'"
+	if conditionEqual(desired, observed) {
+		t.Error("expected differing filter expression to be detected as drift")
 	}
 }

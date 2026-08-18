@@ -19,6 +19,7 @@ package alert
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -408,25 +409,21 @@ func valueEqual(a, b interface{}) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
-	// Numeric comparisons - SigNoz sometimes stringifies ints.
-	if af, aok := a.(float64); aok {
-		switch bv := b.(type) {
-		case float64:
-			return af == bv
-		case int:
-			return af == float64(bv)
-		case int64:
-			return af == float64(bv)
+	// Numeric comparisons. The converter builds desired values as Go ints/
+	// floats while the rules API returns JSON numbers that decode to
+	// float64 (and occasionally stringified ints). Compare all numeric
+	// kinds by reducing both sides to float64 so that, e.g., an int64
+	// desired stepInterval matches a float64 observed one - this is the
+	// "op-as-array"/"type-shape" drift class.
+	if af, aok := toFloat64(a); aok {
+		if bf, bok := toFloat64(b); bok {
+			return af == bf
 		}
-	}
-	if ai, aok := a.(int); aok {
-		switch bv := b.(type) {
-		case int:
-			return ai == bv
-		case int64:
-			return int64(ai) == bv
-		case float64:
-			return float64(ai) == bv
+		// b is a stringified number (e.g. matchType).
+		if bs, ok := b.(string); ok {
+			if bf, fok := toFloat64FromString(bs); fok {
+				return af == bf
+			}
 		}
 	}
 	// Maps.
@@ -451,6 +448,51 @@ func valueEqual(a, b interface{}) bool {
 		return true
 	}
 	return a == b
+}
+
+// toFloat64 reduces a Go numeric value to float64, recognizing the kinds the
+// converter may emit (float64/int/int32/int64/uint/uint64/float32). It returns
+// (value, true) when the input is numeric, (0, false) otherwise. This lets
+// valueEqual compare a desired numeric against the float64 that JSON decoding
+// produces from the SigNoz GET response.
+func toFloat64(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	case string:
+		return 0, false
+	}
+	return 0, false
+}
+
+// toFloat64FromString handles SigNoz's habit of stringifying small ints (e.g.
+// matchType "1"). It parses a numeric string to float64 and reports whether the
+// value was numeric.
+func toFloat64FromString(s string) (float64, bool) {
+	if s == "" {
+		return 0, false
+	}
+	for _, r := range s {
+		if (r < '0' || r > '9') && r != '.' && r != '-' && r != '+' {
+			return 0, false
+		}
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return f, true
+	}
+	return 0, false
 }
 
 func isZeroish(v interface{}) bool {
@@ -629,9 +671,17 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 	// and an "aggregations" array (metricName/temporality/timeAggregation/
 	// spaceAggregation). "source" is required on the wire for metrics
 	// ("meter"); telemetrytypes.Source is always serialized.
+	//
+	// stepInterval is emitted as float64 rather than int64 because the rules
+	// API returns JSON numbers (which unmarshal to float64) and the
+	// conditionEqual drift comparator compares the desired map against the
+	// float64 values decoded from the GET response. Emitting int64 here
+	// caused a perpetual int64-vs-float64 mismatch (the "op-as-array"-class
+	// type-shape drift) and a PUT on every reconcile. float64 is the
+	// canonical JSON number type and matches the observed shape exactly.
 	spec := map[string]interface{}{
 		"name":         name,
-		"stepInterval": stepInterval,
+		"stepInterval": float64(stepInterval),
 		"signal":       signal,
 		"source":       "meter",
 		"disabled":     builder.Disabled,
@@ -749,17 +799,6 @@ func convertFilterSet(filterSet v1beta1.FilterSet) map[string]interface{} {
 	return map[string]interface{}{
 		"expression": expression,
 	}
-}
-
-func convertKeyAttribute(attr v1beta1.KeyAttribute) map[string]interface{} {
-	result := map[string]interface{}{
-		"key":  attr.Key,
-		"type": attr.Type,
-	}
-	if attr.DataType != "" {
-		result["dataType"] = attr.DataType
-	}
-	return result
 }
 
 func (c *external) resolveChannelReferences(ctx context.Context, cr *v1beta1.Alert) error {
