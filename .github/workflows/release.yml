@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY_ORGS: ghcr.io/rossigee
-  GO_REQUIRED_VERSION: 1.26.5
+  GO_REQUIRED_VERSION: 1.26.6
 
 permissions:
   packages: write

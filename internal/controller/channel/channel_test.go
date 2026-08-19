@@ -18,8 +18,9 @@ package channel
 
 import (
 	"context"
-	"github.com/rossigee/provider-signoz/apis/channel/v1beta1"
 	"testing"
+
+	"github.com/rossigee/provider-signoz/apis/channel/v1beta1"
 )
 
 func TestConvertToChannelData(t *testing.T) {

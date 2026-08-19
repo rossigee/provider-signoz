@@ -20,7 +20,3 @@ limitations under the License.
 //go:generate go run -tags generate sigs.k8s.io/controller-tools/cmd/controller-gen object:headerFile=../hack/boilerplate.go.txt paths=./... crd:allowDangerousTypes=true output:artifacts:config=../package/crds
 
 package apis
-
-import (
-	"sigs.k8s.io/controller-tools/cmd/controller-gen"
-)

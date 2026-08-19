@@ -17,9 +17,10 @@ limitations under the License.
 package dashboard
 
 import (
+	"testing"
+
 	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/clients"
-	"testing"
 )
 
 func TestConvertWidgets(t *testing.T) {

@@ -19,13 +19,14 @@ package clients
 import (
 	"context"
 	"encoding/json"
-	"github.com/pkg/errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 func contains(s, substr string) bool {
