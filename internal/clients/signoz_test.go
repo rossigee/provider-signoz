@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/pkg/errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -253,6 +254,81 @@ func TestClient_CreateRule(t *testing.T) {
 
 	if result.AlertName != "Test Alert" {
 		t.Errorf("Expected AlertName 'Test Alert', got %s", result.AlertName)
+	}
+}
+
+// TestClient_CreateRule_RequiresEvaluationBlock reproduces a bug found live
+// against http-auth-failures: the rules API (POST/PUT /api/v1/rules)
+// rejects any request lacking the nested evaluation/schemaVersion/
+// notificationSettings fields with 400 "alert rule is not valid" - even
+// though the top-level evalWindow/frequency fields are also accepted.
+// Confirmed by round-tripping a live GET response through PUT: it failed
+// with only evalWindow/frequency present, and succeeded once evaluation,
+// schemaVersion, and notificationSettings were all three added back
+// (individually omitting any one of the three still failed). This test
+// asserts the client actually serializes all three onto the wire, not
+// just that RuleData has the fields.
+func TestClient_CreateRule_RequiresEvaluationBlock(t *testing.T) {
+	var captured map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+		if err := json.Unmarshal(body, &captured); err != nil {
+			t.Fatalf("failed to unmarshal request body: %v", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(RuleResponse{
+			Status: "success",
+			Data:   &RuleData{ID: "rule-123"},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{BaseURL: server.URL, APIKey: "test-key"})
+
+	rule := &RuleData{
+		AlertName:  "Test Alert",
+		AlertType:  "LOG_BASED_ALERT",
+		EvalWindow: "5m",
+		Frequency:  "1m",
+		Condition:  map[string]interface{}{"test": "condition"},
+		Evaluation: &RuleEvaluation{
+			Kind: "rolling",
+			Spec: RuleEvaluationSpec{EvalWindow: "5m", Frequency: "1m"},
+		},
+		SchemaVersion: "v2alpha1",
+		NotificationSettings: &RuleNotificationSettings{
+			Renotify:  RuleRenotify{Enabled: false, Interval: "30m"},
+			UsePolicy: false,
+		},
+	}
+
+	if _, err := client.CreateRule(context.Background(), rule); err != nil {
+		t.Fatalf("CreateRule failed: %v", err)
+	}
+
+	evaluation, ok := captured["evaluation"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected evaluation object on the wire, got %v", captured["evaluation"])
+	}
+	if evaluation["kind"] != "rolling" {
+		t.Errorf("expected evaluation.kind 'rolling', got %v", evaluation["kind"])
+	}
+	spec, ok := evaluation["spec"].(map[string]interface{})
+	if !ok || spec["evalWindow"] != "5m" || spec["frequency"] != "1m" {
+		t.Errorf("expected evaluation.spec {evalWindow:5m, frequency:1m}, got %v", evaluation["spec"])
+	}
+
+	if captured["schemaVersion"] != "v2alpha1" {
+		t.Errorf("expected schemaVersion 'v2alpha1' on the wire, got %v", captured["schemaVersion"])
+	}
+
+	if _, ok := captured["notificationSettings"].(map[string]interface{}); !ok {
+		t.Errorf("expected notificationSettings object on the wire, got %v", captured["notificationSettings"])
 	}
 }
 

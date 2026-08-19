@@ -241,6 +241,18 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		Disabled:          cr.Spec.ForProvider.Disabled,
 		Severity:          cr.Spec.ForProvider.Severity,
 		Version:           "v5",
+		Evaluation: &clients.RuleEvaluation{
+			Kind: "rolling",
+			Spec: clients.RuleEvaluationSpec{
+				EvalWindow: cr.Spec.ForProvider.EvalWindow,
+				Frequency:  cr.Spec.ForProvider.Frequency,
+			},
+		},
+		SchemaVersion: "v2alpha1",
+		NotificationSettings: &clients.RuleNotificationSettings{
+			Renotify:  clients.RuleRenotify{Enabled: false, Interval: "30m"},
+			UsePolicy: false,
+		},
 	}
 
 	created, err := c.service.CreateRule(ctx, ruleData)
@@ -288,6 +300,18 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		Disabled:          cr.Spec.ForProvider.Disabled,
 		Severity:          cr.Spec.ForProvider.Severity,
 		Version:           "v5",
+		Evaluation: &clients.RuleEvaluation{
+			Kind: "rolling",
+			Spec: clients.RuleEvaluationSpec{
+				EvalWindow: cr.Spec.ForProvider.EvalWindow,
+				Frequency:  cr.Spec.ForProvider.Frequency,
+			},
+		},
+		SchemaVersion: "v2alpha1",
+		NotificationSettings: &clients.RuleNotificationSettings{
+			Renotify:  clients.RuleRenotify{Enabled: false, Interval: "30m"},
+			UsePolicy: false,
+		},
 	}
 
 	_, err := c.service.UpdateRule(ctx, alertID, ruleData)

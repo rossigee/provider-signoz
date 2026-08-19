@@ -139,8 +139,8 @@ var authBreaker AuthBreaker = noopBreaker{}
 
 type noopBreaker struct{}
 
-func (noopBreaker) Allow(string, bool) error              { return nil }
-func (noopBreaker) Record(string, bool)                   {}
+func (noopBreaker) Allow(string, bool) error               { return nil }
+func (noopBreaker) Record(string, bool)                    {}
 func (noopBreaker) CooldownRemaining(string) time.Duration { return 0 }
 
 // breakerKey returns the lookup key for the auth breaker: a sha256-derived
@@ -675,22 +675,63 @@ func (c *Client) ListDashboardsV2(ctx context.Context) ([]*DashboardV2Data, erro
 
 // RuleData represents an alert rule in SigNoz
 type RuleData struct {
-	ID                string                 `json:"id,omitempty"`
-	AlertName         string                 `json:"alert"`
-	AlertType         string                 `json:"alertType"`
-	RuleType          string                 `json:"ruleType,omitempty"`
-	EvalWindow        string                 `json:"evalWindow"`
-	Frequency         string                 `json:"frequency"`
-	Condition         map[string]interface{} `json:"condition"`
-	Labels            map[string]string      `json:"labels,omitempty"`
-	Annotations       map[string]string      `json:"annotations,omitempty"`
-	PreferredChannels []string               `json:"preferredChannels,omitempty"`
-	Disabled          bool                   `json:"disabled"`
-	Severity          string                 `json:"severity,omitempty"`
-	Version           string                 `json:"version,omitempty"`
-	CreatedAt         string                 `json:"created_at,omitempty"`
-	UpdatedAt         string                 `json:"updated_at,omitempty"`
-	State             string                 `json:"state,omitempty"`
+	ID        string `json:"id,omitempty"`
+	AlertName string `json:"alert"`
+	AlertType string `json:"alertType"`
+	RuleType  string `json:"ruleType,omitempty"`
+	// EvalWindow and Frequency are also accepted at top level, but are not
+	// sufficient on their own - see Evaluation.
+	EvalWindow           string                    `json:"evalWindow"`
+	Frequency            string                    `json:"frequency"`
+	Condition            map[string]interface{}    `json:"condition"`
+	Labels               map[string]string         `json:"labels,omitempty"`
+	Annotations          map[string]string         `json:"annotations,omitempty"`
+	PreferredChannels    []string                  `json:"preferredChannels,omitempty"`
+	Disabled             bool                      `json:"disabled"`
+	Severity             string                    `json:"severity,omitempty"`
+	Version              string                    `json:"version,omitempty"`
+	CreatedAt            string                    `json:"created_at,omitempty"`
+	UpdatedAt            string                    `json:"updated_at,omitempty"`
+	State                string                    `json:"state,omitempty"`
+	Evaluation           *RuleEvaluation           `json:"evaluation,omitempty"`
+	SchemaVersion        string                    `json:"schemaVersion,omitempty"`
+	NotificationSettings *RuleNotificationSettings `json:"notificationSettings,omitempty"`
+}
+
+// RuleEvaluation is a required sibling of RuleData.Condition on the rules
+// API (POST/PUT /api/v1/rules) - confirmed live: a request carrying only
+// the top-level evalWindow/frequency fields (no evaluation block) is
+// rejected with 400 "alert rule is not valid", even though those flat
+// fields are also accepted and harmlessly ignored when evaluation is
+// present. GET responses always include this nested form.
+type RuleEvaluation struct {
+	Kind string             `json:"kind"`
+	Spec RuleEvaluationSpec `json:"spec"`
+}
+
+// RuleEvaluationSpec carries the actual window/frequency values inside
+// RuleEvaluation. Accepts the same short duration strings ("5m", "1m") as
+// the top-level fields - does not require the canonical long form ("5m0s")
+// that GET responses return.
+type RuleEvaluationSpec struct {
+	EvalWindow string `json:"evalWindow"`
+	Frequency  string `json:"frequency"`
+}
+
+// RuleNotificationSettings is required on Create/Update alongside
+// Evaluation and SchemaVersion - confirmed live: omitting any one of the
+// three (even with the other two present) is rejected with the same 400
+// "alert rule is not valid".
+type RuleNotificationSettings struct {
+	Renotify  RuleRenotify `json:"renotify"`
+	UsePolicy bool         `json:"usePolicy"`
+}
+
+// RuleRenotify defines re-notification behavior within
+// RuleNotificationSettings.
+type RuleRenotify struct {
+	Enabled  bool   `json:"enabled"`
+	Interval string `json:"interval"`
 }
 
 // RuleResponse wraps rule API responses
