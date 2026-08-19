@@ -13,16 +13,16 @@ import (
 // around the sliding window and cooldown can be observed exactly.
 type fakeClock struct{ now time.Time }
 
-func (f *fakeClock) nowFn() time.Time { return f.now }
+func (f *fakeClock) nowFn() time.Time        { return f.now }
 func (f *fakeClock) advance(d time.Duration) { f.now = f.now.Add(d) }
 
 func newBreakerWithClock(threshold int, window, cooldown time.Duration, fc *fakeClock) *Breaker {
 	return &Breaker{
-		threshold:       threshold,
-		window:          window,
-		cooldown:        cooldown,
-		keys:            make(map[string]*keyState),
-		nowFn:           fc.nowFn,
+		threshold: threshold,
+		window:    window,
+		cooldown:  cooldown,
+		keys:      make(map[string]*keyState),
+		nowFn:     fc.nowFn,
 	}
 }
 

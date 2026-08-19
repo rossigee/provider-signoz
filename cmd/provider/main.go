@@ -23,6 +23,10 @@ import (
 	"runtime"
 	"time"
 
+	xpcontroller "github.com/crossplane/crossplane-runtime/v2/pkg/controller"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/rossigee/provider-signoz/apis"
 	"github.com/rossigee/provider-signoz/internal/breaker"
 	"github.com/rossigee/provider-signoz/internal/clients"
@@ -30,10 +34,6 @@ import (
 	"github.com/rossigee/provider-signoz/internal/controller/providerconfig"
 	"github.com/rossigee/provider-signoz/internal/tracing"
 	"github.com/rossigee/provider-signoz/internal/version"
-	xpcontroller "github.com/crossplane/crossplane-runtime/v2/pkg/controller"
-	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
-	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"gopkg.in/alecthomas/kingpin.v2"
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -136,7 +136,7 @@ func main() {
 		// hundreds of reconciles per second and ~200rps to the API
 		// server. Switching to Leases only and longer leases appears to
 		// alleviate this.
-		Scheme:                           s,
+		Scheme:                     s,
 		LeaderElection:             *leaderElection,
 		LeaderElectionID:           "crossplane-leader-election-provider-signoz",
 		LeaderElectionResourceLock: resourcelock.LeasesResourceLock,

@@ -50,13 +50,13 @@ const controllerName = "providerconfig.signoz.crossplane.io"
 const (
 	TypeCredentialsValid xpv1.ConditionType = "CredentialsValid"
 
-	ReasonCredentialsAccepted  = "CredentialsAccepted"
-	ReasonCredentialsRejected  = "CredentialsRejected"
-	ReasonCredentialsEmpty     = "CredentialsEmpty"
-	ReasonCredentialsShort     = "CredentialsTooShort"
-	ReasonUpstreamTransient    = "UpstreamTransient"
-	ReasonSecretMissing        = "SecretMissing"
-	ReasonEndpointUnreachable  = "EndpointUnreachable"
+	ReasonCredentialsAccepted = "CredentialsAccepted"
+	ReasonCredentialsRejected = "CredentialsRejected"
+	ReasonCredentialsEmpty    = "CredentialsEmpty"
+	ReasonCredentialsShort    = "CredentialsTooShort"
+	ReasonUpstreamTransient   = "UpstreamTransient"
+	ReasonSecretMissing       = "SecretMissing"
+	ReasonEndpointUnreachable = "EndpointUnreachable"
 )
 
 // Backoff constants. Requeue intervals come from clients.BackoffPolicy; these

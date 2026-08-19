@@ -45,9 +45,10 @@ type BackoffPolicy struct {
 }
 
 // DefaultBackoffPolicy matches the project defaults agreed for this pass:
-//   Auth: 5m minimum, 15m cap
-//   Transient: 1s initial, 60s cap (rapid recovery)
-//   Rate-limited: 5m cap (retry-after wins when smaller)
+//
+//	Auth: 5m minimum, 15m cap
+//	Transient: 1s initial, 60s cap (rapid recovery)
+//	Rate-limited: 5m cap (retry-after wins when smaller)
 var DefaultBackoffPolicy = BackoffPolicy{
 	AuthRequeueMin:   5 * time.Minute,
 	AuthRequeueMax:   15 * time.Minute,

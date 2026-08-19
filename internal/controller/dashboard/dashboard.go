@@ -30,6 +30,7 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
 	apisv1beta1 "github.com/rossigee/provider-signoz/apis/v1beta1"
@@ -37,7 +38,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"github.com/google/uuid"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -745,15 +745,15 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 	v2 := &clients.DashboardV2Data{
 		Name:          v2name,
 		SchemaVersion: "v6",
-		Tags: make([]clients.DashboardTag, len(tags)),
+		Tags:          make([]clients.DashboardTag, len(tags)),
 		Spec: clients.DashboardV2Spec{
 			Display: &clients.DashboardV2Display{
 				Name:        title,
 				Description: description,
 			},
-			Panels:     make(map[string]interface{}),
-			Variables:  convertVariablesToV2(variables),
-			Layouts:    []interface{}{},
+			Panels:    make(map[string]interface{}),
+			Variables: convertVariablesToV2(variables),
+			Layouts:   []interface{}{},
 		},
 	}
 

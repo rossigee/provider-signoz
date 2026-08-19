@@ -42,6 +42,6 @@ func addKnownTypes(s *runtime.Scheme) error {
 		&NotificationChannel{},
 		&NotificationChannelList{},
 	)
-		metav1.AddToGroupVersion(s, SchemeGroupVersion)
+	metav1.AddToGroupVersion(s, SchemeGroupVersion)
 	return nil
 }
