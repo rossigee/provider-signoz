@@ -203,6 +203,14 @@ spec:
                                   rate, p99). Required for non-metric data sources and for some
                                   metric operators.
                                 type: string
+                              aggregationExpression:
+                                description: |-
+                                  AggregationExpression is the aggregation for logs/traces data
+                                  sources, expressed as a single SigNoz expression string (e.g.
+                                  "count()", "sum(bytes)") rather than the metric-style metricName +
+                                  time/space aggregation split. Ignored for metrics data sources;
+                                  defaults to "count()" for logs/traces when empty.
+                                type: string
                               dataSource:
                                 description: DataSource defines the data source (metrics,
                                   logs, traces).
@@ -509,6 +517,57 @@ spec:
                       target:
                         description: Target is the threshold value for comparison.
                         type: number
+                      thresholds:
+                        description: |-
+                          Thresholds defines SigNoz's v5 multi-level threshold block (rules API
+                          condition.thresholds, kind "basic"). When set, this replaces
+                          CompareOp/Target/MatchType entirely on the wire - those only express a
+                          single flat threshold and cannot represent multiple severity levels
+                          each with their own notification channels, which the flat form
+                          silently gets wrong for any rule created with multi-level thresholds.
+                        items:
+                          description: |-
+                            Threshold defines a single severity level within a v5 multi-level
+                            threshold block (RuleCondition.Thresholds).
+                          properties:
+                            channels:
+                              description: |-
+                                Channels is a list of notification channel names for this severity
+                                level.
+                              items:
+                                type: string
+                              type: array
+                            matchType:
+                              description: |-
+                                MatchType defines how to match the condition, as SigNoz's raw v5
+                                enum string (not the same numbering as RuleCondition.MatchType).
+                              type: string
+                            name:
+                              description: Name is the severity level name (e.g. "critical",
+                                "warning").
+                              type: string
+                            op:
+                              description: Op is the comparison operator, as SigNoz's
+                                raw v5 enum string.
+                              type: string
+                            recoveryTarget:
+                              description: RecoveryTarget is the value at which this
+                                level recovers.
+                              type: number
+                            target:
+                              description: Target is the threshold value for this
+                                level.
+                              type: number
+                            targetUnit:
+                              description: TargetUnit is the unit of the target value.
+                              type: string
+                          required:
+                          - matchType
+                          - name
+                          - op
+                          - target
+                          type: object
+                        type: array
                     required:
                     - compositeQuery
                     type: object

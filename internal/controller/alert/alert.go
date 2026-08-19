@@ -532,11 +532,20 @@ func mapsEqual(a, b map[string]string) bool {
 func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
 	result := map[string]interface{}{
 		"compositeQuery":    convertCompositeQuery(condition.CompositeQuery),
-		"op":                "1",
-		"target":            0,
-		"matchType":         "1",
 		"selectedQueryName": "A",
 	}
+
+	// Multi-level thresholds replace the flat op/target/matchType entirely
+	// on the wire - a rule created with thresholds has no top-level
+	// op/target/matchType keys at all (confirmed against a live v5 rule).
+	if len(condition.Thresholds) > 0 {
+		result["thresholds"] = convertThresholds(condition.Thresholds)
+		return result
+	}
+
+	result["op"] = "1"
+	result["target"] = 0
+	result["matchType"] = "1"
 
 	if condition.CompareOp != "" {
 		result["op"] = condition.CompareOp
@@ -549,6 +558,41 @@ func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
 	}
 
 	return result
+}
+
+// convertThresholds converts the CRD's Thresholds slice into SigNoz's v5
+// condition.thresholds block (kind "basic", spec as an array of per-level
+// objects), matching the shape confirmed against a live rule fetched via
+// GET /api/v1/rules/{id}.
+func convertThresholds(thresholds []v1beta1.Threshold) map[string]interface{} {
+	specs := make([]interface{}, len(thresholds))
+	for i, t := range thresholds {
+		spec := map[string]interface{}{
+			"name":           t.Name,
+			"target":         t.Target,
+			"targetUnit":     t.TargetUnit,
+			"recoveryTarget": nil,
+			"matchType":      t.MatchType,
+			"op":             t.Op,
+			"channels":       []interface{}{},
+		}
+		if t.RecoveryTarget != nil {
+			spec["recoveryTarget"] = *t.RecoveryTarget
+		}
+		if len(t.Channels) > 0 {
+			channels := make([]interface{}, len(t.Channels))
+			for j, ch := range t.Channels {
+				channels[j] = ch
+			}
+			spec["channels"] = channels
+		}
+		specs[i] = spec
+	}
+
+	return map[string]interface{}{
+		"kind": "basic",
+		"spec": specs,
+	}
 }
 
 func convertCompositeQuery(query v1beta1.CompositeQuery) map[string]interface{} {
@@ -666,11 +710,22 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 		signal = "metrics"
 	}
 
+	// "source" is required on the wire for metrics ("meter"); logs/traces
+	// queries carry no source (confirmed against a live logs-signal rule
+	// fetched via GET /api/v1/rules/{id}, which has source: "").
+	source := ""
+	if signal == "metrics" {
+		source = "meter"
+	}
+
 	// The rules API v5 envelope expects compositeQuery.queries[].spec to be
-	// a QueryBuilderQuery[MetricAggregation] with a "signal" discriminator
-	// and an "aggregations" array (metricName/temporality/timeAggregation/
-	// spaceAggregation). "source" is required on the wire for metrics
-	// ("meter"); telemetrytypes.Source is always serialized.
+	// a QueryBuilderQuery with a "signal" discriminator and an
+	// "aggregations" array. The aggregation shape itself differs by signal:
+	// metrics use metricName/temporality/timeAggregation/spaceAggregation;
+	// logs/traces use a single "expression" string (e.g. "count()") instead
+	// - confirmed against a live logs-signal rule, which has
+	// aggregations: [{"expression": "count()"}] with none of the metric
+	// fields present at all.
 	//
 	// stepInterval is emitted as float64 rather than int64 because the rules
 	// API returns JSON numbers (which unmarshal to float64) and the
@@ -683,40 +738,50 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 		"name":         name,
 		"stepInterval": float64(stepInterval),
 		"signal":       signal,
-		"source":       "meter",
+		"source":       source,
 		"disabled":     builder.Disabled,
 		"legend":       builder.Legend,
 	}
 
-	aggregation := map[string]interface{}{
-		"metricName":       "",
-		"temporality":      "",
-		"timeAggregation":  "",
-		"spaceAggregation": "",
-	}
+	if signal == "metrics" {
+		aggregation := map[string]interface{}{
+			"metricName":       "",
+			"temporality":      "",
+			"timeAggregation":  "",
+			"spaceAggregation": "",
+		}
 
-	if builder.AggregateAttribute != nil {
-		aggregation["metricName"] = builder.AggregateAttribute.Key
-	}
-	if builder.Temporality != "" {
-		aggregation["temporality"] = builder.Temporality
-	}
-	if builder.TimeAggregation != "" {
-		aggregation["timeAggregation"] = builder.TimeAggregation
-	} else if builder.AggregateOperator != "" {
-		// Legacy single-operator form (v3): map to the v5 time/space split.
-		aggregation["timeAggregation"] = builder.AggregateOperator
-	}
-	if builder.SpaceAggregation != "" {
-		aggregation["spaceAggregation"] = builder.SpaceAggregation
-	} else if builder.AggregateOperator != "" {
-		aggregation["spaceAggregation"] = "sum"
-	}
-	if builder.ReduceTo != "" {
-		aggregation["reduceTo"] = builder.ReduceTo
-	}
+		if builder.AggregateAttribute != nil {
+			aggregation["metricName"] = builder.AggregateAttribute.Key
+		}
+		if builder.Temporality != "" {
+			aggregation["temporality"] = builder.Temporality
+		}
+		if builder.TimeAggregation != "" {
+			aggregation["timeAggregation"] = builder.TimeAggregation
+		} else if builder.AggregateOperator != "" {
+			// Legacy single-operator form (v3): map to the v5 time/space split.
+			aggregation["timeAggregation"] = builder.AggregateOperator
+		}
+		if builder.SpaceAggregation != "" {
+			aggregation["spaceAggregation"] = builder.SpaceAggregation
+		} else if builder.AggregateOperator != "" {
+			aggregation["spaceAggregation"] = "sum"
+		}
+		if builder.ReduceTo != "" {
+			aggregation["reduceTo"] = builder.ReduceTo
+		}
 
-	spec["aggregations"] = []interface{}{aggregation}
+		spec["aggregations"] = []interface{}{aggregation}
+	} else {
+		expr := builder.AggregationExpression
+		if expr == "" {
+			expr = "count()"
+		}
+		spec["aggregations"] = []interface{}{
+			map[string]interface{}{"expression": expr},
+		}
+	}
 
 	if builder.FilterExpression != "" {
 		spec["filter"] = map[string]interface{}{

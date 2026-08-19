@@ -599,3 +599,111 @@ func TestConditionEqual_FilterExpressionRoundTrip(t *testing.T) {
 		t.Error("expected differing filter expression to be detected as drift")
 	}
 }
+
+// TestConvertCondition_Thresholds reproduces http-auth-failures: a
+// LOGS_BASED_ALERT created in SigNoz with a v5 multi-level threshold block.
+// Before Thresholds existed on RuleCondition, convertCondition always
+// emitted a flat op/target/matchType condition for every alert, which
+// SigNoz's rules API rejects outright for a threshold_rule that actually
+// uses condition.thresholds - confirmed live (400 "alert rule is not
+// valid"). This locks in the shape convertThresholds must produce, matched
+// field-for-field against a live rule fetched via GET /api/v1/rules/{id}.
+func TestConvertCondition_Thresholds(t *testing.T) {
+	condition := v1beta1.RuleCondition{
+		CompositeQuery: v1beta1.CompositeQuery{
+			QueryType: "3",
+			Builder: &v1beta1.QueryBuilder{
+				DataSource:            "logs",
+				AggregationExpression: "count()",
+				FilterExpression:      "body CONTAINS '401 Unauth'",
+			},
+		},
+		Thresholds: []v1beta1.Threshold{
+			{
+				Name:      "critical",
+				Target:    0,
+				MatchType: "3",
+				Op:        "1",
+				Channels:  []string{"Discord #infra (golder)"},
+			},
+		},
+	}
+
+	result := convertCondition(condition)
+
+	if _, hasOp := result["op"]; hasOp {
+		t.Error("expected no top-level op key when thresholds are set")
+	}
+	if _, hasTarget := result["target"]; hasTarget {
+		t.Error("expected no top-level target key when thresholds are set")
+	}
+	if _, hasMatchType := result["matchType"]; hasMatchType {
+		t.Error("expected no top-level matchType key when thresholds are set")
+	}
+
+	thresholds, ok := result["thresholds"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected thresholds map, got %T", result["thresholds"])
+	}
+	if thresholds["kind"] != "basic" {
+		t.Errorf("expected kind 'basic', got %v", thresholds["kind"])
+	}
+	specs, ok := thresholds["spec"].([]interface{})
+	if !ok || len(specs) != 1 {
+		t.Fatalf("expected 1 threshold spec, got %v", thresholds["spec"])
+	}
+	level := specs[0].(map[string]interface{})
+	if level["name"] != "critical" || level["target"] != float64(0) || level["matchType"] != "3" || level["op"] != "1" {
+		t.Errorf("unexpected threshold level: %v", level)
+	}
+	channels, ok := level["channels"].([]interface{})
+	if !ok || len(channels) != 1 || channels[0] != "Discord #infra (golder)" {
+		t.Errorf("expected 1 channel 'Discord #infra (golder)', got %v", level["channels"])
+	}
+}
+
+// TestConvertQueryBuilder_LogsSignal reproduces the other half of the same
+// bug: a logs/traces builder query was always emitted with metric-shaped
+// aggregations (metricName/temporality/time+spaceAggregation) and
+// source="meter", regardless of signal. A live logs-signal rule has
+// aggregations: [{"expression": "count()"}] and source: "" instead.
+func TestConvertQueryBuilder_LogsSignal(t *testing.T) {
+	builder := v1beta1.QueryBuilder{
+		DataSource:            "logs",
+		AggregationExpression: "count()",
+	}
+
+	result := convertQueryBuilder(builder)
+
+	if result["signal"] != "logs" {
+		t.Errorf("expected signal 'logs', got %v", result["signal"])
+	}
+	if result["source"] != "" {
+		t.Errorf("expected empty source for logs signal, got %v", result["source"])
+	}
+	aggregations, ok := result["aggregations"].([]interface{})
+	if !ok || len(aggregations) != 1 {
+		t.Fatalf("expected 1 aggregation, got %v", result["aggregations"])
+	}
+	agg := aggregations[0].(map[string]interface{})
+	if agg["expression"] != "count()" {
+		t.Errorf("expected expression 'count()', got %v", agg)
+	}
+	if _, hasMetricName := agg["metricName"]; hasMetricName {
+		t.Error("expected no metricName field on a logs-signal aggregation")
+	}
+}
+
+// TestConvertQueryBuilder_LogsSignal_DefaultExpression checks the fallback
+// when AggregationExpression is left empty on a non-metrics query.
+func TestConvertQueryBuilder_LogsSignal_DefaultExpression(t *testing.T) {
+	builder := v1beta1.QueryBuilder{DataSource: "logs"}
+
+	result := convertQueryBuilder(builder)
+
+	aggregations := result["aggregations"].([]interface{})
+	agg := aggregations[0].(map[string]interface{})
+	if agg["expression"] != "count()" {
+		t.Errorf("expected default expression 'count()', got %v", agg["expression"])
+	}
+}

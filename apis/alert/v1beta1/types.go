@@ -17,11 +17,10 @@ limitations under the License.
 package v1beta1
 
 import (
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
-
 
 // AlertParameters are the configurable fields of an Alert.
 type AlertParameters struct {
@@ -97,6 +96,49 @@ type RuleCondition struct {
 	// +kubebuilder:validation:Enum=1;2
 	// +optional
 	MatchType *int `json:"matchType,omitempty"`
+
+	// Thresholds defines SigNoz's v5 multi-level threshold block (rules API
+	// condition.thresholds, kind "basic"). When set, this replaces
+	// CompareOp/Target/MatchType entirely on the wire - those only express a
+	// single flat threshold and cannot represent multiple severity levels
+	// each with their own notification channels, which the flat form
+	// silently gets wrong for any rule created with multi-level thresholds.
+	// +optional
+	Thresholds []Threshold `json:"thresholds,omitempty"`
+}
+
+// Threshold defines a single severity level within a v5 multi-level
+// threshold block (RuleCondition.Thresholds).
+type Threshold struct {
+	// Name is the severity level name (e.g. "critical", "warning").
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Target is the threshold value for this level.
+	// +kubebuilder:validation:Required
+	Target float64 `json:"target"`
+
+	// TargetUnit is the unit of the target value.
+	// +optional
+	TargetUnit string `json:"targetUnit,omitempty"`
+
+	// RecoveryTarget is the value at which this level recovers.
+	// +optional
+	RecoveryTarget *float64 `json:"recoveryTarget,omitempty"`
+
+	// MatchType defines how to match the condition, as SigNoz's raw v5
+	// enum string (not the same numbering as RuleCondition.MatchType).
+	// +kubebuilder:validation:Required
+	MatchType string `json:"matchType"`
+
+	// Op is the comparison operator, as SigNoz's raw v5 enum string.
+	// +kubebuilder:validation:Required
+	Op string `json:"op"`
+
+	// Channels is a list of notification channel names for this severity
+	// level.
+	// +optional
+	Channels []string `json:"channels,omitempty"`
 }
 
 // CompositeQuery defines a composite query for alerts.
@@ -200,6 +242,14 @@ type QueryBuilder struct {
 	// metric operators.
 	// +optional
 	AggregateOperator string `json:"aggregateOperator,omitempty"`
+
+	// AggregationExpression is the aggregation for logs/traces data
+	// sources, expressed as a single SigNoz expression string (e.g.
+	// "count()", "sum(bytes)") rather than the metric-style metricName +
+	// time/space aggregation split. Ignored for metrics data sources;
+	// defaults to "count()" for logs/traces when empty.
+	// +optional
+	AggregationExpression string `json:"aggregationExpression,omitempty"`
 
 	// AggregateAttribute defines what to aggregate on.
 	// +optional
@@ -337,7 +387,7 @@ type OrderBy struct {
 // AlertSpec defines the desired state of Alert
 type AlertSpec struct {
 	xpv1.ManagedResourceSpec `json:",inline"`
-	ForProvider       AlertParameters `json:"forProvider"`
+	ForProvider              AlertParameters `json:"forProvider"`
 }
 
 // AlertObservation are the observable fields of an Alert.
@@ -364,7 +414,7 @@ type AlertObservation struct {
 // AlertStatus represents the observed state of an Alert.
 type AlertStatus struct {
 	xpv1.ConditionedStatus `json:",inline"`
-	AtProvider          AlertObservation `json:"atProvider,omitempty"`
+	AtProvider             AlertObservation `json:"atProvider,omitempty"`
 }
 
 // +kubebuilder:object:root=true
