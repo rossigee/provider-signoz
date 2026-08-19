@@ -752,3 +752,66 @@ func TestIsAlertUpToDate_LogAlertTypeTranslation(t *testing.T) {
 		t.Error("expected LOG_BASED_ALERT spec to match observed LOGS_BASED_ALERT without drift")
 	}
 }
+
+// TestBuildRuleData_EvaluationOnlyForThresholds reproduces a regression
+// found live right after Thresholds support shipped: sending the
+// evaluation/schemaVersion/notificationSettings block unconditionally
+// broke every alert that does NOT use Thresholds (a promql_rule like
+// high-cpu-usage, condition = flat compareOp/target/matchType) with the
+// same 400 "alert rule is not valid" - confirmed by isolating this exact
+// variable against both a real threshold_rule (http-auth-failures, which
+// requires the block) and a real promql_rule (high-cpu-usage, which
+// rejects it). buildRuleData must only populate the block when the
+// condition actually carries Thresholds.
+func TestBuildRuleData_EvaluationOnlyForThresholds(t *testing.T) {
+	withThresholds := &v1beta1.Alert{
+		Spec: v1beta1.AlertSpec{
+			ForProvider: v1beta1.AlertParameters{
+				AlertName:  "Thresholds Alert",
+				EvalWindow: "5m",
+				Frequency:  "1m",
+				Condition: v1beta1.RuleCondition{
+					Thresholds: []v1beta1.Threshold{
+						{Name: "critical", Target: 0, MatchType: "3", Op: "1"},
+					},
+				},
+			},
+		},
+	}
+
+	rd := buildRuleData(withThresholds)
+	if rd.Evaluation == nil {
+		t.Error("expected Evaluation to be set for an alert using Thresholds")
+	}
+	if rd.SchemaVersion == "" {
+		t.Error("expected SchemaVersion to be set for an alert using Thresholds")
+	}
+	if rd.NotificationSettings == nil {
+		t.Error("expected NotificationSettings to be set for an alert using Thresholds")
+	}
+
+	withoutThresholds := &v1beta1.Alert{
+		Spec: v1beta1.AlertSpec{
+			ForProvider: v1beta1.AlertParameters{
+				AlertName:  "Flat Condition Alert",
+				EvalWindow: "5m",
+				Frequency:  "5m",
+				Condition: v1beta1.RuleCondition{
+					CompareOp: ">",
+					Target:    float64Ptr(80),
+				},
+			},
+		},
+	}
+
+	rd2 := buildRuleData(withoutThresholds)
+	if rd2.Evaluation != nil {
+		t.Error("expected Evaluation to be nil for a flat-condition alert (no Thresholds)")
+	}
+	if rd2.SchemaVersion != "" {
+		t.Error("expected SchemaVersion to be empty for a flat-condition alert (no Thresholds)")
+	}
+	if rd2.NotificationSettings != nil {
+		t.Error("expected NotificationSettings to be nil for a flat-condition alert (no Thresholds)")
+	}
+}

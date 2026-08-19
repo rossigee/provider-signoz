@@ -228,32 +228,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalCreation{}, errors.Wrap(err, errResolveRefs)
 	}
 
-	ruleData := &clients.RuleData{
-		AlertName:         cr.Spec.ForProvider.AlertName,
-		AlertType:         convertAlertType(cr.Spec.ForProvider.AlertType),
-		RuleType:          "threshold_rule",
-		EvalWindow:        cr.Spec.ForProvider.EvalWindow,
-		Frequency:         cr.Spec.ForProvider.Frequency,
-		Condition:         convertCondition(cr.Spec.ForProvider.Condition),
-		Labels:            cr.Spec.ForProvider.Labels,
-		Annotations:       cr.Spec.ForProvider.Annotations,
-		PreferredChannels: cr.Status.AtProvider.ResolvedChannelIDs,
-		Disabled:          cr.Spec.ForProvider.Disabled,
-		Severity:          cr.Spec.ForProvider.Severity,
-		Version:           "v5",
-		Evaluation: &clients.RuleEvaluation{
-			Kind: "rolling",
-			Spec: clients.RuleEvaluationSpec{
-				EvalWindow: cr.Spec.ForProvider.EvalWindow,
-				Frequency:  cr.Spec.ForProvider.Frequency,
-			},
-		},
-		SchemaVersion: "v2alpha1",
-		NotificationSettings: &clients.RuleNotificationSettings{
-			Renotify:  clients.RuleRenotify{Enabled: false, Interval: "30m"},
-			UsePolicy: false,
-		},
-	}
+	ruleData := buildRuleData(cr)
 
 	created, err := c.service.CreateRule(ctx, ruleData)
 	if err != nil {
@@ -287,6 +262,33 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, errors.Wrap(err, errResolveRefs)
 	}
 
+	ruleData := buildRuleData(cr)
+
+	_, err := c.service.UpdateRule(ctx, alertID, ruleData)
+	if err != nil {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
+		return managed.ExternalUpdate{}, errors.Wrap(err, errUpdateAlert)
+	}
+	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
+
+	return managed.ExternalUpdate{}, nil
+}
+
+// buildRuleData builds the API payload shared by Create and Update.
+//
+// evaluation/schemaVersion/notificationSettings are only populated for
+// alerts using a v5 multi-level threshold condition - confirmed live by
+// isolating this exact variable against two different alert kinds:
+// http-auth-failures (a real threshold_rule) requires the block and is
+// rejected without it, while high-cpu-usage (a promql_rule, condition has
+// no Thresholds) is rejected *with* it and succeeds without it. RuleType
+// is left hardcoded to "threshold_rule" for every alert regardless of
+// actual kind - also confirmed live: the API tolerates that mismatch as
+// long as the evaluation block is absent, so it is out of scope for this
+// fix (changing it would need to correctly discriminate promql_rule/
+// threshold_rule/anomaly_rule from the condition shape, which only
+// exercises the flat-condition and Thresholds cases seen so far).
+func buildRuleData(cr *v1beta1.Alert) *clients.RuleData {
 	ruleData := &clients.RuleData{
 		AlertName:         cr.Spec.ForProvider.AlertName,
 		AlertType:         convertAlertType(cr.Spec.ForProvider.AlertType),
@@ -300,28 +302,24 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		Disabled:          cr.Spec.ForProvider.Disabled,
 		Severity:          cr.Spec.ForProvider.Severity,
 		Version:           "v5",
-		Evaluation: &clients.RuleEvaluation{
+	}
+
+	if len(cr.Spec.ForProvider.Condition.Thresholds) > 0 {
+		ruleData.Evaluation = &clients.RuleEvaluation{
 			Kind: "rolling",
 			Spec: clients.RuleEvaluationSpec{
 				EvalWindow: cr.Spec.ForProvider.EvalWindow,
 				Frequency:  cr.Spec.ForProvider.Frequency,
 			},
-		},
-		SchemaVersion: "v2alpha1",
-		NotificationSettings: &clients.RuleNotificationSettings{
+		}
+		ruleData.SchemaVersion = "v2alpha1"
+		ruleData.NotificationSettings = &clients.RuleNotificationSettings{
 			Renotify:  clients.RuleRenotify{Enabled: false, Interval: "30m"},
 			UsePolicy: false,
-		},
+		}
 	}
 
-	_, err := c.service.UpdateRule(ctx, alertID, ruleData)
-	if err != nil {
-		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
-		return managed.ExternalUpdate{}, errors.Wrap(err, errUpdateAlert)
-	}
-	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
-
-	return managed.ExternalUpdate{}, nil
+	return ruleData
 }
 
 func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
