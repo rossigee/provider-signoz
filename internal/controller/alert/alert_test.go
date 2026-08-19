@@ -707,3 +707,48 @@ func TestConvertQueryBuilder_LogsSignal_DefaultExpression(t *testing.T) {
 		t.Errorf("expected default expression 'count()', got %v", agg["expression"])
 	}
 }
+
+// TestConvertAlertType reproduces the third bug found while fixing
+// http-auth-failures: SigNoz's rules API rejects LOG_BASED_ALERT (the
+// CRD's enum value) with 400 "alert rule is not valid" for a logs-signal
+// alert, and only accepts LOGS_BASED_ALERT - confirmed live by isolating
+// this single variable. METRIC_BASED_ALERT and other enum values must
+// pass through unchanged, since every metrics alert in the fleet already
+// syncs successfully with that exact value.
+func TestConvertAlertType(t *testing.T) {
+	cases := map[string]string{
+		"LOG_BASED_ALERT":     "LOGS_BASED_ALERT",
+		"METRIC_BASED_ALERT":  "METRIC_BASED_ALERT",
+		"TRACE_BASED_ALERT":   "TRACE_BASED_ALERT",
+		"ANOMALY_BASED_ALERT": "ANOMALY_BASED_ALERT",
+	}
+	for in, want := range cases {
+		if got := convertAlertType(in); got != want {
+			t.Errorf("convertAlertType(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestIsAlertUpToDate_LogAlertTypeTranslation guards against comparing the
+// CRD's raw LOG_BASED_ALERT against the observed LOGS_BASED_ALERT
+// directly, which would report drift forever on an otherwise-correct log
+// alert and force a spurious Update on every reconcile.
+func TestIsAlertUpToDate_LogAlertTypeTranslation(t *testing.T) {
+	spec := v1beta1.AlertParameters{
+		AlertName:  "Test Alert",
+		AlertType:  "LOG_BASED_ALERT",
+		EvalWindow: "5m",
+		Frequency:  "1m",
+	}
+	alert := &clients.RuleData{
+		AlertName:  "Test Alert",
+		AlertType:  "LOGS_BASED_ALERT",
+		EvalWindow: "5m",
+		Frequency:  "1m",
+		Condition:  convertCondition(spec.Condition),
+	}
+
+	if !isAlertUpToDate(spec, alert) {
+		t.Error("expected LOG_BASED_ALERT spec to match observed LOGS_BASED_ALERT without drift")
+	}
+}

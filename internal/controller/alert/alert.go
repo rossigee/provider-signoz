@@ -230,7 +230,7 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	ruleData := &clients.RuleData{
 		AlertName:         cr.Spec.ForProvider.AlertName,
-		AlertType:         cr.Spec.ForProvider.AlertType,
+		AlertType:         convertAlertType(cr.Spec.ForProvider.AlertType),
 		RuleType:          "threshold_rule",
 		EvalWindow:        cr.Spec.ForProvider.EvalWindow,
 		Frequency:         cr.Spec.ForProvider.Frequency,
@@ -289,7 +289,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	ruleData := &clients.RuleData{
 		AlertName:         cr.Spec.ForProvider.AlertName,
-		AlertType:         cr.Spec.ForProvider.AlertType,
+		AlertType:         convertAlertType(cr.Spec.ForProvider.AlertType),
 		RuleType:          "threshold_rule",
 		EvalWindow:        cr.Spec.ForProvider.EvalWindow,
 		Frequency:         cr.Spec.ForProvider.Frequency,
@@ -357,7 +357,7 @@ func isAlertUpToDate(spec v1beta1.AlertParameters, alert *clients.RuleData) bool
 		return false
 	}
 
-	if spec.AlertType != alert.AlertType {
+	if convertAlertType(spec.AlertType) != alert.AlertType {
 		return false
 	}
 
@@ -551,6 +551,24 @@ func mapsEqual(a, b map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// convertAlertType translates the CRD's alertType enum to the value
+// SigNoz's rules API actually expects on the wire. SigNoz's naming is
+// inconsistent across signal types - METRIC_BASED_ALERT is accepted as-is
+// (singular "METRIC", confirmed by every metrics alert in the fleet
+// syncing successfully), but a logs-signal alert with LOG_BASED_ALERT is
+// rejected with 400 "alert rule is not valid"; only LOGS_BASED_ALERT
+// (plural "LOGS") is accepted - confirmed live by isolating this single
+// variable against http-auth-failures. Only this one confirmed mismatch is
+// translated; TRACE_BASED_ALERT/ANOMALY_BASED_ALERT are passed through
+// unchanged since there is no live rule to confirm either way, and
+// guessing would risk breaking a currently-working alert type.
+func convertAlertType(alertType string) string {
+	if alertType == "LOG_BASED_ALERT" {
+		return "LOGS_BASED_ALERT"
+	}
+	return alertType
 }
 
 func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
