@@ -74,31 +74,12 @@ jobs:
         run: make VERSION=${{ steps.version.outputs.version }} PLATFORMS=linux_amd64 "xpkg.release.publish.${{ env.REGISTRY_ORGS }}.provider-signoz"
 
       - name: Create GitHub Release
-        uses: ncipollo/release-action@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
-          allowUpdates: true
-          body: |
-            ## Provider Image
-            Published to: `${{ env.REGISTRY_ORGS }}/provider-signoz:${{ steps.version.outputs.version }}`
-
-            ## Crossplane Installation
-            ```bash
-            kubectl apply -f - <<EOF
-            apiVersion: pkg.crossplane.io/v1
-            kind: Provider
-            metadata:
-              name: provider-signoz
-            spec:
-              package: ${{ env.REGISTRY_ORGS }}/provider-signoz:${{ steps.version.outputs.version }}
-            EOF
-            ```
-
-            ## Documentation
-            See the [README](https://github.com/rossigee/provider-signoz) for installation and usage instructions.
           draft: false
           prerelease: false
+          generate_release_notes: true
 
       - name: Verify published artifacts
         run: |
