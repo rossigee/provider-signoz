@@ -9,9 +9,9 @@ PLATFORMS ?= linux_amd64 linux_arm64
 -include build/makelib/output.mk
 
 # Setup Go
-GO_REQUIRED_VERSION ?= 1.26.6
+GO_REQUIRED_VERSION ?= 1.27.0
 # Override golangci-lint version for modern Go support
-GOLANGCILINT_VERSION ?= 2.12.2
+GOLANGCILINT_VERSION ?= 2.13.1
 NPROCS ?= 1
 GO_TEST_PARALLEL := $(shell echo $$(( $(NPROCS) / 2 )))
 GO_STATIC_PACKAGES = $(GO_PROJECT)/cmd/provider
