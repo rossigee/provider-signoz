@@ -28,6 +28,9 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
 	"github.com/rossigee/provider-signoz/apis"
+	alertv1beta1 "github.com/rossigee/provider-signoz/apis/alert/v1beta1"
+	channelv1beta1 "github.com/rossigee/provider-signoz/apis/channel/v1beta1"
+	dashboardv1beta1 "github.com/rossigee/provider-signoz/apis/dashboard/v1beta1"
 	"github.com/rossigee/provider-signoz/internal/breaker"
 	"github.com/rossigee/provider-signoz/internal/clients"
 	"github.com/rossigee/provider-signoz/internal/controller"
@@ -42,6 +45,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
+	metricserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	"github.com/crossplane/crossplane-runtime/v2/pkg/statemetrics"
 )
 
 func main() {
@@ -66,6 +73,8 @@ func main() {
 		authFailureThreshold = app.Flag("auth-failure-threshold", "Number of consecutive auth failures within the window that trip the breaker.").Default("5").Int()
 		authFailureCooldown  = app.Flag("auth-failure-cooldown", "Duration the breaker stays open after tripping before allowing a probe.").Default("5m").Duration()
 		probeConnTimeout     = app.Flag("probe-conn-timeout", "Per-attempt timeout for ProviderConfig credentials probe.").Default("10s").Duration()
+		pollStateMetricInterval = app.Flag("poll-state-metric", "State metric recording interval").Default("5s").Duration()
+		metricsBindAddress      = app.Flag("metrics-bind-address", "The address the metrics endpoint binds to.").Default(":8080").String()
 	)
 
 	kingpin.MustParse(app.Parse(os.Args[1:]))
@@ -143,10 +152,21 @@ func main() {
 		LeaderElectionNamespace:    *leaderElectionNamespace,
 		LeaseDuration:              func() *time.Duration { d := 60 * time.Second; return &d }(),
 		RenewDeadline:              func() *time.Duration { d := 50 * time.Second; return &d }(),
+		Metrics: metricserver.Options{
+			BindAddress: *metricsBindAddress,
+		},
 	})
 	if err != nil {
 		log.Info("Cannot create manager", "error", err)
 		os.Exit(1)
+	}
+
+	mrStateMetrics := statemetrics.NewMRStateMetrics()
+	metrics.Registry.MustRegister(mrStateMetrics)
+
+	mo := xpcontroller.MetricOptions{
+		PollStateMetricInterval: *pollStateMetricInterval,
+		MRStateMetrics:          mrStateMetrics,
 	}
 
 	o := xpcontroller.Options{
@@ -155,6 +175,7 @@ func main() {
 		PollInterval:            *pollInterval,
 		GlobalRateLimiter:       ratelimiter.NewGlobal(*maxReconcileRate),
 		Features:                &feature.Flags{},
+		MetricOptions:           &mo,
 	}
 
 	// Wire credentials-defence knobs into the clients package so every
@@ -180,6 +201,10 @@ func main() {
 		NowFn:         time.Now,
 	}
 	kingpin.FatalIfError(controller.SetupWithPCConfig(mgr, o, pcCfg), "Cannot setup controllers")
+
+	kingpin.FatalIfError(mgr.Add(statemetrics.NewMRStateRecorder(mgr.GetClient(), o.Logger, o.MetricOptions.MRStateMetrics, &alertv1beta1.AlertList{}, o.MetricOptions.PollStateMetricInterval)), "Cannot register state metrics for Alert")
+	kingpin.FatalIfError(mgr.Add(statemetrics.NewMRStateRecorder(mgr.GetClient(), o.Logger, o.MetricOptions.MRStateMetrics, &channelv1beta1.NotificationChannelList{}, o.MetricOptions.PollStateMetricInterval)), "Cannot register state metrics for NotificationChannel")
+	kingpin.FatalIfError(mgr.Add(statemetrics.NewMRStateRecorder(mgr.GetClient(), o.Logger, o.MetricOptions.MRStateMetrics, &dashboardv1beta1.DashboardList{}, o.MetricOptions.PollStateMetricInterval)), "Cannot register state metrics for Dashboard")
 
 	kingpin.FatalIfError(mgr.AddHealthzCheck("healthz", healthz.Ping), "Cannot add health check")
 	kingpin.FatalIfError(mgr.AddReadyzCheck("readyz", healthz.Ping), "Cannot add ready check")
