@@ -68,11 +68,11 @@ func main() {
 		// Credentials defence-in-depth knobs. Default behaviour matches the
 		// values agreed in the design plan (min API key length 8, breaker
 		// window 60s / threshold 5 / cooldown 5m).
-		minAPIKeyLength      = app.Flag("min-api-key-length", "Reject Signoz API keys shorter than this many characters.").Default("8").Int()
-		authFailureWindow    = app.Flag("auth-failure-window", "Sliding window over which consecutive auth failures are counted by the upstream breaker.").Default("60s").Duration()
-		authFailureThreshold = app.Flag("auth-failure-threshold", "Number of consecutive auth failures within the window that trip the breaker.").Default("5").Int()
-		authFailureCooldown  = app.Flag("auth-failure-cooldown", "Duration the breaker stays open after tripping before allowing a probe.").Default("5m").Duration()
-		probeConnTimeout     = app.Flag("probe-conn-timeout", "Per-attempt timeout for ProviderConfig credentials probe.").Default("10s").Duration()
+		minAPIKeyLength         = app.Flag("min-api-key-length", "Reject Signoz API keys shorter than this many characters.").Default("8").Int()
+		authFailureWindow       = app.Flag("auth-failure-window", "Sliding window over which consecutive auth failures are counted by the upstream breaker.").Default("60s").Duration()
+		authFailureThreshold    = app.Flag("auth-failure-threshold", "Number of consecutive auth failures within the window that trip the breaker.").Default("5").Int()
+		authFailureCooldown     = app.Flag("auth-failure-cooldown", "Duration the breaker stays open after tripping before allowing a probe.").Default("5m").Duration()
+		probeConnTimeout        = app.Flag("probe-conn-timeout", "Per-attempt timeout for ProviderConfig credentials probe.").Default("10s").Duration()
 		pollStateMetricInterval = app.Flag("poll-state-metric", "State metric recording interval").Default("5s").Duration()
 		metricsBindAddress      = app.Flag("metrics-bind-address", "The address the metrics endpoint binds to.").Default(":8080").String()
 	)
