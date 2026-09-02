@@ -283,9 +283,11 @@ spec:
                                 type: object
                               type: array
                             queryType:
-                              description: QueryType defines the type of query (1=PromQL,
-                                2=ClickHouse, 3=Builder).
+                              description: QueryType defines the type of query (PromQL|ClickHouse|Builder).
                               enum:
+                              - PromQL
+                              - ClickHouse
+                              - Builder
                               - "1"
                               - "2"
                               - "3"

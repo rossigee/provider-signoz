@@ -492,14 +492,17 @@ spec:
                               type: object
                             type: array
                           queryType:
-                            description: QueryType defines the type of query (builder|promql|clickhouse_sql).
+                            description: QueryType defines the type of query (PromQL|ClickHouse|Builder).
                             enum:
+                            - PromQL
+                            - ClickHouse
+                            - Builder
                             - "1"
                             - "2"
                             - "3"
-                            - builder
                             - promql
                             - clickhouse_sql
+                            - builder
                             type: string
                           unit:
                             description: Unit is the unit of the resulting time series.
