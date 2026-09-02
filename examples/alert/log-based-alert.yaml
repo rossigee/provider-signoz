@@ -9,7 +9,7 @@ spec:
     alertType: "LOG_BASED_ALERT"
     condition:
       compositeQuery:
-        queryType: 2  # ClickHouse
+        queryType: ClickHouse
         clickHouse:
           - query: |
               SELECT count() as error_count

@@ -143,9 +143,9 @@ type Threshold struct {
 
 // CompositeQuery defines a composite query for alerts.
 type CompositeQuery struct {
-	// QueryType defines the type of query (builder|promql|clickhouse_sql).
+	// QueryType defines the type of query (PromQL|ClickHouse|Builder).
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum="1";"2";"3";"builder";"promql";"clickhouse_sql"
+	// +kubebuilder:validation:Enum="PromQL";"ClickHouse";"Builder";"1";"2";"3";"promql";"clickhouse_sql";"builder"
 	QueryType string `json:"queryType"`
 
 	// PromQL contains PromQL queries.

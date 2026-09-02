@@ -661,8 +661,23 @@ func convertWidgets(widgets []v1beta1.Widget) []interface{} {
 }
 
 func convertQuery(query v1beta1.Query) map[string]interface{} {
+	// Normalize various input formats to the canonical form (PromQL/ClickHouse/Builder).
+	// Support legacy numeric ("1"/"2"/"3") for backwards compatibility.
+	queryType := query.QueryType
+	if queryType != "" {
+		lower := strings.ToLower(queryType)
+		switch lower {
+		case "1", "promql":
+			queryType = "PromQL"
+		case "2", "clickhouse_sql":
+			queryType = "ClickHouse"
+		case "3", "builder":
+			queryType = "Builder"
+		}
+	}
+
 	result := map[string]interface{}{
-		"queryType": query.QueryType,
+		"queryType": queryType,
 	}
 
 	if len(query.PromQL) > 0 {

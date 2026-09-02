@@ -17,7 +17,7 @@ spec:
         description: "Combined metrics using query builder"
         panelType: "graph"
         query:
-          queryType: 3  # Builder
+          queryType: Builder
           builder:
             queryBuilder:
               - name: "A"
@@ -39,7 +39,7 @@ spec:
         description: "ClickHouse query for database metrics"
         panelType: "table"
         query:
-          queryType: 2  # ClickHouse
+          queryType: ClickHouse
           clickHouse:
             - query: |
                 SELECT
@@ -61,7 +61,7 @@ spec:
         description: "Key metrics summary"
         panelType: "value"
         query:
-          queryType: 1  # PromQL
+          queryType: PromQL
           promQL:
             - query: "sum(rate(signoz_calls_total[5m]))"
               name: "total_rps"

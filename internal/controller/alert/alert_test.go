@@ -141,8 +141,8 @@ func TestConvertCondition(t *testing.T) {
 	}
 
 	compositeQuery := result["compositeQuery"].(map[string]interface{})
-	if compositeQuery["queryType"] != "promql" {
-		t.Errorf("Expected queryType promql, got %v", compositeQuery["queryType"])
+	if compositeQuery["queryType"] != "PromQL" {
+		t.Errorf("Expected queryType PromQL, got %v", compositeQuery["queryType"])
 	}
 
 	queries, ok := compositeQuery["queries"].([]interface{})
@@ -264,8 +264,8 @@ func TestConvertCompositeQuery_BuilderQueriesEnvelope(t *testing.T) {
 
 	result := convertCompositeQuery(cq)
 
-	if result["queryType"] != "builder" {
-		t.Errorf("Expected queryType builder, got %v", result["queryType"])
+	if result["queryType"] != "Builder" {
+		t.Errorf("Expected queryType Builder, got %v", result["queryType"])
 	}
 
 	rawQueries, ok := result["queries"]
@@ -296,17 +296,19 @@ func TestConvertCompositeQuery_BuilderQueriesEnvelope(t *testing.T) {
 }
 
 func TestConvertCompositeQuery_NumericQueryType(t *testing.T) {
-	// Legacy numeric queryType values ("1"/"2"/"3") must be normalised to
-	// the symbolic forms ("promql"/"clickhouse_sql"/"builder").
+	// Legacy numeric queryType values ("1"/"2"/"3") and lowercase forms must be
+	// normalised to the canonical forms (PromQL/ClickHouse/Builder).
 	cases := []struct {
 		in   string
 		want string
 	}{
-		{"1", "promql"},
-		{"2", "clickhouse_sql"},
-		{"3", "builder"},
-		{"builder", "builder"},
-		{"PROMQL", "promql"},
+		{"1", "PromQL"},
+		{"2", "ClickHouse"},
+		{"3", "Builder"},
+		{"builder", "Builder"},
+		{"PROMQL", "PromQL"},
+		{"promql", "PromQL"},
+		{"clickhouse_sql", "ClickHouse"},
 	}
 	for _, tc := range cases {
 		got := convertCompositeQuery(v1beta1.CompositeQuery{QueryType: tc.in})
@@ -321,7 +323,7 @@ func TestConditionEqual_BuilderQueryDrift(t *testing.T) {
 	// SigNoz normalisations (nil vs empty, int vs float64 for op).
 	a := map[string]interface{}{
 		"compositeQuery": map[string]interface{}{
-			"queryType": "builder",
+			"queryType": "Builder",
 			"panelType": "graph",
 			"unit":      nil,
 			"queries": []interface{}{
@@ -352,7 +354,7 @@ func TestConditionEqual_BuilderQueryDrift(t *testing.T) {
 	}
 	b := map[string]interface{}{
 		"compositeQuery": map[string]interface{}{
-			"queryType": "builder",
+			"queryType": "Builder",
 			"panelType": "graph",
 			"queries": []interface{}{
 				map[string]interface{}{
@@ -558,7 +560,7 @@ func TestConditionEqual_FilterExpressionRoundTrip(t *testing.T) {
 	// observed mirrors the live SigNoz v1 GET response for this rule.
 	observed := map[string]interface{}{
 		"compositeQuery": map[string]interface{}{
-			"queryType": "builder",
+			"queryType": "Builder",
 			"panelType": "graph",
 			"unit":      "",
 			"queries": []interface{}{

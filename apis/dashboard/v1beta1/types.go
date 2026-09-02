@@ -117,9 +117,9 @@ type Widget struct {
 
 // Query defines the data query for a widget.
 type Query struct {
-	// QueryType defines the type of query (1=PromQL, 2=ClickHouse, 3=Builder).
+	// QueryType defines the type of query (PromQL|ClickHouse|Builder).
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum="1";"2";"3"
+	// +kubebuilder:validation:Enum="PromQL";"ClickHouse";"Builder";"1";"2";"3"
 	QueryType string `json:"queryType"`
 
 	// PromQL contains PromQL queries.

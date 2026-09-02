@@ -637,27 +637,29 @@ func convertThresholds(thresholds []v1beta1.Threshold) map[string]interface{} {
 
 func convertCompositeQuery(query v1beta1.CompositeQuery) map[string]interface{} {
 	// Normalise QueryType. The user may supply either the numeric legacy
-	// encoding ("1"=PromQL, "2"=ClickHouse, "3"=Builder) or the symbolic
-	// form ("promql"/"clickhouse_sql"/"builder") that SigNoz expects on
-	// the wire. We map everything to the symbolic form.
-	queryType := strings.ToLower(query.QueryType)
-	switch queryType {
-	case "1":
-		queryType = "promql"
-	case "2":
-		queryType = "clickhouse_sql"
-	case "3":
-		queryType = "builder"
+	// Normalize various input formats to the canonical form (PromQL/ClickHouse/Builder).
+	// Support legacy numeric ("1"/"2"/"3") and lowercase formats for backwards compatibility.
+	queryType := query.QueryType
+	if queryType != "" {
+		lower := strings.ToLower(queryType)
+		switch lower {
+		case "1", "promql":
+			queryType = "PromQL"
+		case "2", "clickhouse_sql":
+			queryType = "ClickHouse"
+		case "3", "builder":
+			queryType = "Builder"
+		}
 	}
 	if queryType == "" {
 		if len(query.PromQL) > 0 {
-			queryType = "promql"
+			queryType = "PromQL"
 		} else if len(query.ClickHouse) > 0 {
-			queryType = "clickhouse_sql"
+			queryType = "ClickHouse"
 		} else if query.Builder != nil {
-			queryType = "builder"
+			queryType = "Builder"
 		} else {
-			queryType = "builder"
+			queryType = "Builder"
 		}
 	}
 

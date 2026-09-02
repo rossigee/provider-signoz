@@ -11,7 +11,7 @@ A [Crossplane](https://crossplane.io/) provider for managing [SigNoz](https://si
 
 ## Container Registry
 
-- **Primary**: `ghcr.io/rossigee/provider-signoz:v0.3.0`
+- **Primary**: `ghcr.io/rossigee/provider-signoz:v0.4.16`
 
 ## Overview
 
@@ -41,7 +41,7 @@ The SigNoz provider enables platform teams to manage SigNoz dashboards, alerts, 
 ### Quick Start
 
 ```bash
-kubectl crossplane install provider ghcr.io/rossigee/provider-signoz:v0.3.0
+kubectl crossplane install provider ghcr.io/rossigee/provider-signoz:v0.4.16
 ```
 
 ### Declarative Installation
@@ -52,7 +52,7 @@ kind: Provider
 metadata:
   name: provider-signoz
 spec:
-  package: ghcr.io/rossigee/provider-signoz:v0.3.0
+  package: ghcr.io/rossigee/provider-signoz:v0.4.16
 ```
 
 ## Configuration
@@ -111,7 +111,7 @@ spec:
       - title: "Request Rate"
         panelType: "graph"
         query:
-          queryType: 1  # PromQL
+          queryType: PromQL
           promQL:
             - query: "sum(rate(http_requests_total[5m]))"
               legend: "Requests/sec"
@@ -133,7 +133,7 @@ spec:
     alertType: "METRIC_BASED_ALERT"
     condition:
       compositeQuery:
-        queryType: 1
+        queryType: PromQL
         promQL:
           - query: "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) > 0.05"
     evalWindow: "5m"

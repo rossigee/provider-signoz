@@ -17,7 +17,7 @@ spec:
         description: "HTTP requests per second"
         panelType: "graph"
         query:
-          queryType: 1  # PromQL
+          queryType: PromQL
           promQL:
             - query: "sum(rate(http_requests_total[5m]))"
               name: "A"
@@ -29,7 +29,7 @@ spec:
         description: "HTTP error rate percentage"
         panelType: "graph"
         query:
-          queryType: 1  # PromQL
+          queryType: PromQL
           promQL:
             - query: "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) * 100"
               name: "B"
@@ -41,7 +41,7 @@ spec:
         description: "95th percentile response time"
         panelType: "graph"
         query:
-          queryType: 1  # PromQL
+          queryType: PromQL
           promQL:
             - query: "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))"
               name: "C"

@@ -9,7 +9,7 @@ spec:
     alertType: "METRIC_BASED_ALERT"
     condition:
       compositeQuery:
-        queryType: 3  # Builder
+        queryType: Builder
         builder:
           dataSource: "traces"
           aggregateOperator: "p95"

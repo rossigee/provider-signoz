@@ -62,8 +62,8 @@ func TestConvertWidgets(t *testing.T) {
 	}
 
 	query := widget["query"].(map[string]interface{})
-	if query["queryType"] != "1" {
-		t.Errorf("Expected query type 1, got %v", query["queryType"])
+	if query["queryType"] != "PromQL" {
+		t.Errorf("Expected query type PromQL, got %v", query["queryType"])
 	}
 }
 

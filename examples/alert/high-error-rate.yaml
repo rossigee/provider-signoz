@@ -9,7 +9,7 @@ spec:
     alertType: "METRIC_BASED_ALERT"
     condition:
       compositeQuery:
-        queryType: 1  # PromQL
+        queryType: PromQL
         promQL:
           - query: "sum(rate(http_requests_total{status=~'5..'}[5m])) / sum(rate(http_requests_total[5m])) * 100"
             name: "A"
