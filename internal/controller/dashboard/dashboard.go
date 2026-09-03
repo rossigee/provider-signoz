@@ -247,6 +247,13 @@ func (c *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 	cr.GetAnnotations()["crossplane.io/external-name"] = externalID
 
+	// SigNoz POST ignores spec.display - must use PUT to set title/description
+	_, err = c.service.UpdateDashboardV2(ctx, externalID, dashboardV2)
+	if err != nil {
+		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
+		return managed.ExternalCreation{}, errors.Wrap(err, "cannot update dashboard after creation")
+	}
+
 	return managed.ExternalCreation{}, nil
 }
 
