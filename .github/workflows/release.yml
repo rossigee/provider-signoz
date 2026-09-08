@@ -22,7 +22,7 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_REQUIRED_VERSION }}
           enable-cache: true
@@ -74,7 +74,7 @@ jobs:
         run: make VERSION=${{ steps.version.outputs.version }} PLATFORMS=linux_amd64 "xpkg.release.publish.${{ env.REGISTRY_ORGS }}.provider-signoz"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.version }}
           name: ${{ github.event.repository.name }} ${{ steps.version.outputs.version }}

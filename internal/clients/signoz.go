@@ -21,10 +21,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -174,8 +176,23 @@ type Client struct {
 
 // NewClient creates a new SigNoz API client
 func NewClient(cfg Config) *Client {
+	tlsConfig := &tls.Config{InsecureSkipVerify: cfg.InsecureSkipTLSVerify} //nolint:gosec // opt-in via ProviderConfig
+
+	// Try to load CA certificate from mounted secret if available
+	if !cfg.InsecureSkipTLSVerify {
+		if caCert, err := os.ReadFile("/tls/client/ca.crt"); err == nil {
+			caCertPool, err := x509.SystemCertPool()
+			if err != nil {
+				caCertPool = x509.NewCertPool()
+			}
+			if caCertPool.AppendCertsFromPEM(caCert) {
+				tlsConfig.RootCAs = caCertPool
+			}
+		}
+	}
+
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: cfg.InsecureSkipTLSVerify}, //nolint:gosec // opt-in via ProviderConfig
+		TLSClientConfig: tlsConfig,
 	}
 	return &Client{
 		config: cfg,
