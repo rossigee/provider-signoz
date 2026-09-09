@@ -15,11 +15,13 @@ include ../../../build/makelib/imagelight.mk
 img.build:
 	@$(INFO) docker build $(IMAGE)
 	@$(MAKE) BUILD_ARGS="--load" img.build.shared
-	@$(OK) docker build $(IMAGE)
+	@$(OK) Built $(IMAGE)
 
 img.build.shared:
 	@cp Dockerfile $(IMAGE_TEMP_DIR)
 	@cp -r $(OUTPUT_DIR)/bin/ $(IMAGE_TEMP_DIR)/
+	@cp ../../../package/crossplane.yaml $(IMAGE_TEMP_DIR)/package.yaml
+	@cp -r ../../../package/crds $(IMAGE_TEMP_DIR)/crds
 	@docker build $(BUILD_ARGS) --build-arg TARGETOS=$(TARGETOS) --build-arg TARGETARCH=$(TARGETARCH) -t $(IMAGE) $(IMAGE_TEMP_DIR)
 
 # ====================================================================================
