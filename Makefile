@@ -25,6 +25,7 @@ GO111MODULE = on
 
 # Setup Images
 IMAGES = provider-signoz
+REGISTRY_ORGS = ghcr.io/rossigee
 -include build/makelib/imagelight.mk
 
 # Setup XPKG - Standardized registry configuration
