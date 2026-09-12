@@ -39,7 +39,7 @@ import (
 	"github.com/rossigee/provider-signoz/internal/clients"
 )
 
-const controllerName = "providerconfig.signoz.crossplane.io"
+const controllerName = "providerconfig.signoz.m.crossplane.io"
 
 // Condition type for credentials validity, set on ProviderConfig.status.
 //

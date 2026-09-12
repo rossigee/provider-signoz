@@ -1,14 +1,14 @@
 # Provider SigNoz Documentation
 
-A Crossplane provider for managing SigNoz observability resources.
+A Crossplane v2 provider for managing SigNoz observability resources. All managed resources are namespaced (`*.signoz.m.crossplane.io/v1beta1`) with multi-tenancy support.
 
 ## Quick Links
 
-- [README](README.md) — Basic overview
+- [Configuration](configuration.md) — Authentication and connection setup
+- [Getting Started](getting-started.md) — Installation and first resources
+- [Development](development.md) — Building, testing, and contributing
 
 ## Resource Documentation
-
-Individual resource documentation will be added to the [resources/](resources/) folder.
 
 ### Observability
 
@@ -23,6 +23,12 @@ Individual resource documentation will be added to the [resources/](resources/) 
 |----------|-----------|-------------|
 | Alert | `alert.signoz.m.crossplane.io/v1beta1` | Alert rules |
 
-## Status
+### Provider
 
-Documentation in progress.
+| Resource | API Group | Description |
+|----------|-----------|-------------|
+| ProviderConfig | `signoz.m.crossplane.io/v1beta1` | Credentials (cluster-scoped) |
+
+## API Coverage Gaps
+
+SigNoz API surface not yet modeled: saved views/filters, traceExplorer query templates, logs pipelines and parsing rules, alertmanager routes/silences beyond channels, user/team management, license/ingestion-key rotation, and dashboard variable templates beyond inline maps.

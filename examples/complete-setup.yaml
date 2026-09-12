@@ -3,7 +3,7 @@
 
 ---
 # Provider Configuration
-apiVersion: signoz.crossplane.io/v1beta1
+apiVersion: signoz.m.crossplane.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
