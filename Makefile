@@ -38,6 +38,13 @@ XPKG_REG_ORGS_NO_PROMOTE ?= ghcr.io/rossigee
 # To enable Upbound: export ENABLE_UPBOUND_PUBLISH=true make publish XPKG_REG_ORGS=xpkg.upbound.io/crossplane-contrib
 XPKGS = provider-signoz
 -include build/makelib/xpkg.mk
+# Override xpkg publish to build all platforms (stock build only builds current arch)
+xpkg.release.publish.ghcr.io/rossigee.provider-signoz:
+	@$(foreach plat,$(XPKG_LINUX_PLATFORMS),$(MAKE) xpkg.build.provider-signoz PLATFORM=$(plat) || exit 1;)
+	@$(CROSSPLANE_CLI) xpkg push \
+		$(foreach plat,$(XPKG_LINUX_PLATFORMS),--package-files $(XPKG_OUTPUT_DIR)/$(plat)/provider-signoz-$(VERSION).xpkg ) \
+		ghcr.io/rossigee/provider-signoz:$(VERSION)
+	@$(OK) Pushed package ghcr.io/rossigee/provider-signoz:$(VERSION)
 
 # NOTE: we force image building to happen prior to xpkg build so that we ensure
 # image is present in daemon.
@@ -99,3 +106,7 @@ ci-update-images:
 	@sed -i -E "s|(GO_VERSION ?=) .+|\1 $(shell cat .github/workflows/ci.yml | yq '.env.GO_VERSION' -r)|g" build/makelib/golang.mk
 
 .PHONY: submodules reviewable check-diff update-submodules build.init ci-update-images
+
+# Neutralize plain image publish for ghcr (xpkg uses same ref; plain push would clobber package.yaml)
+img.release.publish.ghcr.io/rossigee.provider-signoz:
+	@:
