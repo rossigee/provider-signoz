@@ -1,5 +1,5 @@
 # Standardized CI/CD Template for Crossplane Providers
-# Version: 2025-10-28 - Updated for Go 1.27.1
+# Version: 2026-09-08 - Updated for Go 1.27.1 + golangci-lint v2.13.2 + full security scanning
 #
 # This template implements CI builds and validates ONLY
 # - CI: Build validation only (no publishing to avoid tag conflicts)
@@ -54,6 +54,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          token: ${{ github.token }}
           submodules: true
 
       - name: Setup Go
@@ -75,6 +76,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          token: ${{ github.token }}
           submodules: true
 
       - name: Setup Go
@@ -98,6 +100,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          token: ${{ github.token }}
           submodules: true
           fetch-depth: 0
 
@@ -130,6 +133,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          token: ${{ github.token }}
           submodules: true
 
       - name: Setup Go
@@ -178,6 +182,7 @@ jobs:
       - name: Upload Gosec Results
         uses: github/codeql-action/upload-sarif@v4
         if: always() && hashFiles('gosec-results.sarif') != ''
+        continue-on-error: true
         with:
           sarif_file: gosec-results.sarif
           category: gosec
@@ -206,10 +211,18 @@ jobs:
 
       - name: Validate Build Process
         run: |
-          # Build binary and Docker image
+          # Validate that all build steps work without publishing
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository owner: ${{ github.repository_owner }}"
+          
+          # Build binary
           make build
-          echo "✅ Binary and Docker image build successful"
-
+          echo "✅ Binary build successful"
+          
+          # Build Docker image locally (without push)
+          make docker.build
+          echo "✅ Docker image build successful"
+          
           # Build Crossplane package locally (without push)
           make xpkg.build
           echo "✅ Crossplane package build successful"
@@ -246,7 +259,7 @@ jobs:
 # 5. STANDARDIZED BUILD SYSTEM
 #    - Uses rossigee/build submodule (working fork)
 #    - Consistent make targets across all providers
-#    - Go 1.24.5 with proper version handling
+#    - Go 1.25.3 with proper version handling
 # 
 # To apply this template:
 # 1. Copy this structure to .github/workflows/ci.yml
