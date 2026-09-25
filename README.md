@@ -11,7 +11,7 @@ A [Crossplane](https://crossplane.io/) provider for managing [SigNoz](https://si
 
 ## Container Registry
 
-- **Primary**: `ghcr.io/rossigee/provider-signoz:v0.4.16`
+- **Primary**: `ghcr.io/rossigee/provider-signoz:v0.6.4`
 
 ## Overview
 
@@ -41,7 +41,7 @@ The SigNoz provider enables platform teams to manage SigNoz dashboards, alerts, 
 ### Quick Start
 
 ```bash
-kubectl crossplane install provider ghcr.io/rossigee/provider-signoz:v0.4.16
+kubectl crossplane install provider ghcr.io/rossigee/provider-signoz:v0.6.4
 ```
 
 ### Declarative Installation
@@ -52,7 +52,7 @@ kind: Provider
 metadata:
   name: provider-signoz
 spec:
-  package: ghcr.io/rossigee/provider-signoz:v0.4.16
+  package: ghcr.io/rossigee/provider-signoz:v0.6.4
 ```
 
 ## Configuration
