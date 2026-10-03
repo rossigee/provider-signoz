@@ -7,7 +7,7 @@ Guide for configuring the provider.
 Create a ProviderConfig to configure connection settings:
 
 ```yaml
-apiVersion: $p.crossplane.io/v1
+apiVersion: signoz.m.crossplane.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: default
