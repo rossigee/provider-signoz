@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.7] - 2026-10-03
+
+### Fixed
+
+- Adoption now persists the id it discovers. Setting `external-name` during `Observe` was silently discarded: once a resource is observed up to date the reconciler writes only the status subresource and never the object, so the adopted id was lost every reconcile. Adoption was correct but had to be repeated indefinitely, re-listing every dashboard through the API on each poll, and the resource only read as Ready because adoption rescued it each time rather than because its id was recorded. `Observe` now writes the id itself.
+
 ## [v0.6.6] - 2026-10-03
 
 ### Fixed
