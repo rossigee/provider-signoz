@@ -1,6 +1,7 @@
 # Project Setup
 PROJECT_NAME := provider-signoz
 PROJECT_REPO := github.com/rossigee/$(PROJECT_NAME)
+CROSSPLANE_VERSION = 2.5.0
 
 PLATFORMS ?= linux_amd64 linux_arm64
 -include build/makelib/common.mk
