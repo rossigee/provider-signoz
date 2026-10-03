@@ -51,6 +51,7 @@ const (
 	errUpdateDashboard = "cannot update dashboard"
 	errDeleteDashboard = "cannot delete dashboard"
 	errGetDashboard    = "cannot get dashboard"
+	errFindDashboard   = "cannot search for an existing dashboard by name"
 )
 
 // Setup adds a controller that reconciles Dashboard managed resources.
@@ -168,13 +169,42 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	dashboard, err := c.service.GetDashboardV2(ctx, dashboardID)
 	if err != nil {
 		if clients.IsNotFound(err) {
-			clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
-			return managed.ExternalObservation{
-				ResourceExists: false,
-			}, nil
+			// The recorded id does not exist. Before concluding the resource is
+			// absent, look for a dashboard with the same name - if one is
+			// there, this CR lost its external-name and re-adopting is correct.
+			// Creating instead would 409, because SigNoz rejects on name
+			// collision and reports a freshly minted id in the error, which
+			// makes the conflict look like a different resource each time.
+			adopted, findErr := c.service.FindDashboardV2ByName(ctx, cr.Spec.ForProvider.Title)
+			if findErr != nil {
+				// A failure to search is not evidence the dashboard is gone.
+				// Reporting absent here would trigger a create and turn a
+				// transient list error into a stuck resource.
+				clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, findErr, false)
+				return managed.ExternalObservation{}, errors.Wrap(findErr, errFindDashboard)
+			}
+
+			if adopted != nil {
+				if cr.GetAnnotations() == nil {
+					cr.SetAnnotations(make(map[string]string))
+				}
+				cr.GetAnnotations()["crossplane.io/external-name"] = adopted.ID
+				logger := log.FromContext(ctx)
+				logger.Info("Adopted existing dashboard by name",
+					"name", cr.GetName(), "title", cr.Spec.ForProvider.Title,
+					"id", adopted.ID)
+
+				dashboard = adopted
+			} else {
+				clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
+				return managed.ExternalObservation{
+					ResourceExists: false,
+				}, nil
+			}
+		} else {
+			clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
+			return managed.ExternalObservation{}, errors.Wrap(err, errGetDashboard)
 		}
-		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
-		return managed.ExternalObservation{}, errors.Wrap(err, errGetDashboard)
 	}
 	clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, nil, true)
 

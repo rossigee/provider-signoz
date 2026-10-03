@@ -446,3 +446,98 @@ func TestIsNotFound(t *testing.T) {
 		})
 	}
 }
+
+// The V2 list endpoint nests results under data.dashboards and reports the
+// unpaginated count in data.total. Decoding it as a bare array yields an empty
+// list with no error, and omitting limit= silently truncates at 20 while still
+// reporting the full total - both make existing dashboards look absent.
+func TestClient_ListDashboardsV2_ParsesEnvelopeAndRequestsLimit(t *testing.T) {
+	var gotPath, gotLimit string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotLimit = r.URL.Query().Get("limit")
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "success",
+			"data": map[string]interface{}{
+				"total":      32,
+				"dashboards": []map[string]interface{}{{"id": "a", "name": "alpha"}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{BaseURL: server.URL, APIKey: "test-key"})
+
+	got, err := client.ListDashboardsV2(context.Background())
+	if err != nil {
+		t.Fatalf("ListDashboardsV2 failed: %v", err)
+	}
+
+	if gotPath != "/api/v2/dashboards" {
+		t.Errorf("Expected path /api/v2/dashboards, got %s", gotPath)
+	}
+
+	if gotLimit == "" {
+		t.Error("Expected an explicit limit query parameter; without it SigNoz truncates at 20")
+	}
+
+	if len(got) != 1 || got[0].Name != "alpha" {
+		t.Fatalf("Expected 1 dashboard named alpha, got %+v", got)
+	}
+}
+
+func TestClient_FindDashboardV2ByName(t *testing.T) {
+	tests := []struct {
+		name      string
+		wantName  string
+		wantID    string
+		wantEmpty bool
+	}{
+		{name: "alpha", wantName: "alpha", wantID: "id-alpha"},
+		{name: "missing-one", wantEmpty: true},
+		{name: "", wantEmpty: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"status": "success",
+					"data": map[string]interface{}{
+						"total": 2,
+						"dashboards": []map[string]interface{}{
+							{"id": "id-alpha", "name": "alpha"},
+							{"id": "id-beta", "name": "beta"},
+						},
+					},
+				})
+			}))
+			defer server.Close()
+
+			client := NewClient(Config{BaseURL: server.URL, APIKey: "test-key"})
+
+			got, err := client.FindDashboardV2ByName(context.Background(), tt.name)
+			if err != nil {
+				t.Fatalf("FindDashboardV2ByName failed: %v", err)
+			}
+
+			if tt.wantEmpty {
+				if got != nil {
+					t.Errorf("Expected nil dashboard for %q, got %+v", tt.name, got)
+				}
+				return
+			}
+
+			if got == nil {
+				t.Fatalf("Expected to find %q, got nil", tt.name)
+			}
+			if got.ID != tt.wantID {
+				t.Errorf("Expected id %s, got %s", tt.wantID, got.ID)
+			}
+		})
+	}
+}
