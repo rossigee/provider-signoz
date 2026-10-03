@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.6.6] - 2026-10-03
+
+### Fixed
+
+- Dashboard adoption now matches on the name SigNoz actually stores. v0.6.5 compared against `spec.forProvider.title`, but SigNoz stores a slug of it — lower cased with whitespace collapsed to hyphens — so `CoreDNS Monitoring` is held as `coredns-monitoring` and `Bitcoin Knots Node` as `bitcoin-knots-node`. Neither equals the title, so the lookup never matched and adoption never fired. Verified against all 29 dashboards managed by flux-crossplane-signoz: the slug of the title matches every one. The raw title and CR name are still tried as fallbacks.
+
 ## [v0.6.5] - 2026-10-03
 
 ### Fixed

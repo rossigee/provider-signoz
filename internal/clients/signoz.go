@@ -27,6 +27,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -720,10 +722,16 @@ func (c *Client) ListDashboardsV2(ctx context.Context) ([]*DashboardV2Data, erro
 // what SigNoz itself enforces uniqueness on, so it is the field that
 // reliably identifies an existing dashboard.
 //
-// Returns nil without error when no dashboard carries that name, so callers
-// can fall through to create.
-func (c *Client) FindDashboardV2ByName(ctx context.Context, name string) (*DashboardV2Data, error) {
-	if name == "" {
+// Returns nil without error when no dashboard matches, so callers can fall
+// through to create.
+func (c *Client) FindDashboardV2ByName(ctx context.Context, names ...string) (*DashboardV2Data, error) {
+	wanted := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		if n = strings.TrimSpace(n); n != "" {
+			wanted[n] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
 		return nil, nil
 	}
 
@@ -733,13 +741,57 @@ func (c *Client) FindDashboardV2ByName(ctx context.Context, name string) (*Dashb
 	}
 
 	for _, d := range dashboards {
-		if d != nil && d.Name == name {
+		if d == nil {
+			continue
+		}
+		if _, ok := wanted[d.Name]; ok {
 			return d, nil
 		}
 	}
 
 	return nil, nil
 }
+
+// DashboardNameCandidates returns the names a dashboard may carry in SigNoz
+// for a given title and CR name, most likely first.
+//
+// SigNoz does not store the title verbatim. It stores a slug of it - lower
+// cased with whitespace collapsed to hyphens - and that slug is what its
+// uniqueness check applies to. So "CoreDNS Monitoring" is stored as
+// "coredns-monitoring" and "Kubernetes Cluster Overview" as
+// "kubernetes-cluster-overview", neither of which equals the title.
+//
+// Verified against all 29 dashboards managed by flux-crossplane-signoz: the
+// slug of the title matches every one of them, and is not always the CR name.
+//
+// The raw title and the CR name are included as fallbacks so an unusual title
+// still has a chance of matching, at the cost of a slightly wider search.
+func DashboardNameCandidates(title, crName string) []string {
+	candidates := make([]string, 0, 3)
+
+	if slug := SlugifyDashboardName(title); slug != "" {
+		candidates = append(candidates, slug)
+	}
+	if t := strings.TrimSpace(title); t != "" && (len(candidates) == 0 || candidates[0] != t) {
+		candidates = append(candidates, t)
+	}
+	if n := strings.TrimSpace(crName); n != "" && !slices.Contains(candidates, n) {
+		candidates = append(candidates, n)
+	}
+
+	return candidates
+}
+
+// SlugifyDashboardName renders a dashboard title the way SigNoz stores it:
+// trimmed, lower cased, with runs of whitespace collapsed to single hyphens.
+func SlugifyDashboardName(title string) string {
+	return strings.Trim(
+		whitespaceRun.ReplaceAllString(strings.ToLower(strings.TrimSpace(title)), "-"),
+		"-",
+	)
+}
+
+var whitespaceRun = regexp.MustCompile(`\s+`)
 
 // Alert/Rule API methods
 

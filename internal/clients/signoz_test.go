@@ -541,3 +541,100 @@ func TestClient_FindDashboardV2ByName(t *testing.T) {
 		})
 	}
 }
+
+// SigNoz stores a slug of the title, not the title. Every title below is a
+// real one from flux-crossplane-signoz, paired with the name SigNoz actually
+// holds it under.
+func TestSlugifyDashboardName(t *testing.T) {
+	tests := []struct {
+		title string
+		want  string
+	}{
+		{"Hosts Overview", "hosts-overview"},
+		{"CoreDNS Monitoring", "coredns-monitoring"},
+		{"Bitcoin Knots Node", "bitcoin-knots-node"},
+		{"Kubernetes Cluster Overview", "kubernetes-cluster-overview"},
+		{"Backup Registry Dashboard", "backup-registry-dashboard"},
+		{"Vaultwarden", "vaultwarden"},
+		{"TLS Certificate Expiry Monitoring", "tls-certificate-expiry-monitoring"},
+		{"  Padded   Title  ", "padded-title"},
+		{"SigNoz Provider Monitoring", "signoz-provider-monitoring"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		if got := SlugifyDashboardName(tt.title); got != tt.want {
+			t.Errorf("SlugifyDashboardName(%q) = %q, want %q", tt.title, got, tt.want)
+		}
+	}
+}
+
+func TestDashboardNameCandidates(t *testing.T) {
+	tests := []struct {
+		name   string
+		title  string
+		crName string
+		want   []string
+	}{
+		{
+			name:   "slug differs from cr name",
+			title:  "Bitcoin Knots Node",
+			crName: "bitcoind-node",
+			want:   []string{"bitcoin-knots-node", "Bitcoin Knots Node", "bitcoind-node"},
+		},
+		{
+			name:   "slug equals cr name is not duplicated",
+			title:  "Hosts Overview",
+			crName: "hosts-overview",
+			want:   []string{"hosts-overview", "Hosts Overview"},
+		},
+		{
+			name:   "no title falls back to cr name",
+			title:  "",
+			crName: "something",
+			want:   []string{"something"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DashboardNameCandidates(tt.title, tt.crName)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("got %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+func TestClient_FindDashboardV2ByName_MultipleCandidates(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "success",
+			"data": map[string]interface{}{
+				"total": 1,
+				"dashboards": []map[string]interface{}{
+					{"id": "id-slug", "name": "coredns-monitoring"},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{BaseURL: server.URL, APIKey: "test-key"})
+
+	// The slug must match even though the title and CR name do not.
+	got, err := client.FindDashboardV2ByName(context.Background(),
+		DashboardNameCandidates("CoreDNS Monitoring", "coredns-monitoring")...)
+	if err != nil {
+		t.Fatalf("FindDashboardV2ByName failed: %v", err)
+	}
+	if got == nil || got.ID != "id-slug" {
+		t.Fatalf("Expected to adopt id-slug via the slug candidate, got %+v", got)
+	}
+}
