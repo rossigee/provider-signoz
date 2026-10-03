@@ -544,11 +544,28 @@ type DashboardV2Response struct {
 	Data   *DashboardV2Data `json:"data"`
 }
 
-// ListDashboardsV2Response wraps list dashboards V2 response
+// ListDashboardsV2Response wraps list dashboards V2 response.
+//
+// The V2 list endpoint nests the dashboards under data.dashboards and
+// reports the unpaginated count in data.total - it does NOT return a bare
+// array. Decoding into Data directly yields an empty list with no error,
+// which is how this went unnoticed.
 type ListDashboardsV2Response struct {
-	Status string             `json:"status"`
-	Data   []*DashboardV2Data `json:"data"`
+	Status string               `json:"status"`
+	Data   ListDashboardsV2Data `json:"data"`
 }
+
+// ListDashboardsV2Data is the data envelope of the V2 list response.
+type ListDashboardsV2Data struct {
+	Dashboards []*DashboardV2Data `json:"dashboards"`
+	Total      int                `json:"total"`
+}
+
+// dashboardsV2ListLimit is the page size requested from the V2 list endpoint.
+// Without an explicit limit SigNoz returns 20 results and silently drops the
+// rest, while still reporting the true total - so a truncated list looks
+// like absent dashboards. 500 comfortably covers any realistic fleet.
+const dashboardsV2ListLimit = 500
 
 // DashboardResponse wraps dashboard API responses
 type DashboardResponse struct {
@@ -675,7 +692,8 @@ func (c *Client) UpdateDashboardV2(ctx context.Context, id string, dashboard *Da
 
 // ListDashboardsV2 lists all dashboards using V2 API
 func (c *Client) ListDashboardsV2(ctx context.Context) ([]*DashboardV2Data, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/api/v2/dashboards", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v2/dashboards?limit=%d", dashboardsV2ListLimit), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -685,7 +703,42 @@ func (c *Client) ListDashboardsV2(ctx context.Context) ([]*DashboardV2Data, erro
 		return nil, err
 	}
 
-	return result.Data, nil
+	return result.Data.Dashboards, nil
+}
+
+// FindDashboardV2ByName looks up a dashboard by its SigNoz name.
+//
+// This exists to recover from a lost external-name. Crossplane derives a
+// deterministic UUID for a new Dashboard, but if the create succeeds and the
+// annotation write-back is lost the CR keeps pointing at an id that does not
+// exist. The next reconcile sees a 404, concludes the resource is absent,
+// and attempts to create - which SigNoz rejects with 409 already-exists,
+// naming a freshly minted id rather than the real one. The result is a CR
+// stuck in a create/409 loop against a dashboard that is present.
+//
+// Matching on name is what the V2 API offers: the id is opaque, but name is
+// what SigNoz itself enforces uniqueness on, so it is the field that
+// reliably identifies an existing dashboard.
+//
+// Returns nil without error when no dashboard carries that name, so callers
+// can fall through to create.
+func (c *Client) FindDashboardV2ByName(ctx context.Context, name string) (*DashboardV2Data, error) {
+	if name == "" {
+		return nil, nil
+	}
+
+	dashboards, err := c.ListDashboardsV2(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, d := range dashboards {
+		if d != nil && d.Name == name {
+			return d, nil
+		}
+	}
+
+	return nil, nil
 }
 
 // Alert/Rule API methods
