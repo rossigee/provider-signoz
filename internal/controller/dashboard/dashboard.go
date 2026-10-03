@@ -175,7 +175,10 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			// Creating instead would 409, because SigNoz rejects on name
 			// collision and reports a freshly minted id in the error, which
 			// makes the conflict look like a different resource each time.
-			adopted, findErr := c.service.FindDashboardV2ByName(ctx, cr.Spec.ForProvider.Title)
+			// SigNoz stores a slug of the title, not the title itself, so the
+			// candidates have to cover both the slug and the raw forms.
+			candidates := clients.DashboardNameCandidates(cr.Spec.ForProvider.Title, cr.GetName())
+			adopted, findErr := c.service.FindDashboardV2ByName(ctx, candidates...)
 			if findErr != nil {
 				// A failure to search is not evidence the dashboard is gone.
 				// Reporting absent here would trigger a create and turn a
@@ -192,7 +195,7 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 				logger := log.FromContext(ctx)
 				logger.Info("Adopted existing dashboard by name",
 					"name", cr.GetName(), "title", cr.Spec.ForProvider.Title,
-					"id", adopted.ID)
+					"candidates", candidates, "id", adopted.ID)
 
 				dashboard = adopted
 			} else {
