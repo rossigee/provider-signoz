@@ -820,12 +820,20 @@ type RuleData struct {
 	NotificationSettings *RuleNotificationSettings `json:"notificationSettings,omitempty"`
 }
 
-// RuleEvaluation is a required sibling of RuleData.Condition on the rules
-// API (POST/PUT /api/v1/rules) - confirmed live: a request carrying only
-// the top-level evalWindow/frequency fields (no evaluation block) is
-// rejected with 400 "alert rule is not valid", even though those flat
-// fields are also accepted and harmlessly ignored when evaluation is
-// present. GET responses always include this nested form.
+// RuleEvaluation is an OPTIONAL sibling of RuleData.Condition on the rules
+// API (POST/PUT /api/v1/rules) - confirmed live by isolating it against a
+// real promql_rule payload: omitting the whole block is accepted, and
+// sending evaluation on its own is also accepted. GET responses always
+// include this nested form, which is why it is easy to assume it is
+// required.
+//
+// This comment previously stated the opposite - that a request carrying
+// only the top-level evalWindow/frequency fields was rejected with 400
+// "alert rule is not valid". It is not. The 400 comes from sending the full
+// evaluation + schemaVersion + notificationSettings set together (see
+// buildRuleData in internal/controller/alert for the isolation matrix).
+// An inverted comment here contributed to a misdiagnosis where 20 valid
+// alert manifests were believed to be unfixable.
 type RuleEvaluation struct {
 	Kind string             `json:"kind"`
 	Spec RuleEvaluationSpec `json:"spec"`
@@ -840,10 +848,26 @@ type RuleEvaluationSpec struct {
 	Frequency  string `json:"frequency"`
 }
 
-// RuleNotificationSettings is required on Create/Update alongside
-// Evaluation and SchemaVersion - confirmed live: omitting any one of the
-// three (even with the other two present) is rejected with the same 400
-// "alert rule is not valid".
+// RuleNotificationSettings is sent alongside Evaluation and SchemaVersion on
+// Create/Update for multi-level threshold rules.
+//
+// Corrected 2026-10-05: this comment previously claimed the field is
+// required and that omitting any one of the three is rejected. Measured
+// against the live rules API, the behaviour is narrower - the API rejects
+// the full three-field set (evaluation + schemaVersion +
+// notificationSettings) with 400 "alert rule is not valid", and accepts the
+// payload with the block omitted entirely. Which of schemaVersion and
+// notificationSettings is the rejecting field was not isolated
+// individually; buildRuleData avoids the ambiguity by only emitting the set
+// for Thresholds rules, which is the shape the API accepts.
+//
+// This comment previously claimed the opposite - that a request carrying
+// only the top-level evalWindow/frequency fields (no evaluation block) is
+// rejected with 400 "alert rule is not valid". It is not. The 400 comes from
+// sending the full evaluation + schemaVersion + notificationSettings set
+// together (see buildRuleData in internal/controller/alert for the isolation
+// matrix). An inverted comment here contributed to a misdiagnosis where 20
+// valid alert manifests were believed to be unfixable.
 type RuleNotificationSettings struct {
 	Renotify  RuleRenotify `json:"renotify"`
 	UsePolicy bool         `json:"usePolicy"`
