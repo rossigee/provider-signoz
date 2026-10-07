@@ -352,7 +352,7 @@ func (c *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalDelete{}, nil // Nothing to delete
 	}
 
-	err := c.service.DeleteDashboard(ctx, dashboardID)
+	err := c.service.DeleteDashboardV2(ctx, dashboardID)
 	if err != nil && !clients.IsNotFound(err) {
 		clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
 		return managed.ExternalDelete{}, errors.Wrap(err, errDeleteDashboard)

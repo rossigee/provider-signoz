@@ -199,6 +199,33 @@ func TestClient_DeleteDashboard(t *testing.T) {
 	}
 }
 
+func TestClient_DeleteDashboardV2(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("Expected DELETE method, got %s", r.Method)
+		}
+
+		if r.URL.Path != "/api/v2/dashboards/dashboard-uuid-123" {
+			t.Errorf("Expected path /api/v2/dashboards/dashboard-uuid-123, got %s", r.URL.Path)
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		BaseURL: server.URL,
+		APIKey:  "test-key",
+	}
+
+	client := NewClient(cfg)
+
+	err := client.DeleteDashboardV2(context.Background(), "dashboard-uuid-123")
+	if err != nil {
+		t.Fatalf("DeleteDashboardV2 failed: %v", err)
+	}
+}
+
 func TestClient_CreateRule(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

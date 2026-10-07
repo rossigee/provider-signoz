@@ -692,6 +692,12 @@ func (c *Client) UpdateDashboardV2(ctx context.Context, id string, dashboard *Da
 	return result.Data, nil
 }
 
+// DeleteDashboardV2 deletes a dashboard by ID using V2 API
+func (c *Client) DeleteDashboardV2(ctx context.Context, id string) error {
+	_, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("/api/v2/dashboards/%s", id), nil)
+	return err
+}
+
 // ListDashboardsV2 lists all dashboards using V2 API
 func (c *Client) ListDashboardsV2(ctx context.Context) ([]*DashboardV2Data, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet,
