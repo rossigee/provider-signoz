@@ -199,6 +199,14 @@ spec:
 | `type` | string | Yes | Channel type (slack, pagerduty, webhook, etc.) |
 | `*Configs` | object | Conditional | Type-specific configuration |
 
+## Important: Dashboard API Versioning
+
+**All dashboard operations now use the SigNoz V2 API consistently** (Create, Read, Update, Delete).
+
+In previous versions, dashboard deletion incorrectly fell back to the V1 API while Create/Update/Read used V2, potentially causing issues when deleting dashboards created with the V2 API. This has been fixed in v0.6.8+.
+
+**No action required** — existing dashboards continue to work. The API change is internal.
+
 ## Development
 
 ### Prerequisites
@@ -252,22 +260,29 @@ make xpkg.build
 - Check network connectivity to SigNoz instance
 - For self-hosted instances, ensure API is exposed
 
-### ProviderConfig Readiness
+### ProviderConfig Readiness & Validation
 
-The provider validates every `ProviderConfig` against the upstream SigNoz
-API before accepting work for any resource that references it. The result is
-recorded on **`status.conditions.CredentialsValid`** (a condition type
+The provider automatically validates every `ProviderConfig` against the upstream SigNoz
+API before accepting work for any resource that references it. This validation includes:
+
+- **Credentials verification**: Validates API key format and presence
+- **Upstream connectivity**: Probes the configured endpoint
+- **Authentication**: Confirms the API key is accepted by SigNoz
+
+The validation result is recorded on **`status.conditions.CredentialsValid`** (a condition type
 distinct from `Ready` so operators can route alerts on it independently).
 
-| Reason | Meaning | Operator action |
-|---|---|---|
-| `CredentialsAccepted` | Probe succeeded. | None; healthy. |
-| `CredentialsRejected` | Upstream returned 401/403. | Rotate the API key in the Secret referenced by `spec.credentials.secretRef`. |
-| `CredentialsEmpty` | `apiKey` is empty. | Check Secret content and `spec.credentials.secretRef.key`. |
-| `CredentialsTooShort` | `apiKey` is shorter than `--min-api-key-length` (default 8). | Almost certainly a placeholder/mis-paste. Replace. |
-| `SecretMissing` | Secret referenced by ProviderConfig not found, or `apiKey` JSON key absent. | Verify Secret exists and contains valid JSON. |
-| `UpstreamTransient` | Upstream returned 5xx or the probe timed out. | Usually self-healing; ensure SigNoz is healthy. |
-| `EndpointUnreachable` | Probe could not reach the configured `endpoint`. | Verify `endpoint` and DNS. |
+#### Condition Status Reference
+
+| Reason | Status | Meaning | Operator action |
+|---|---|---|---|
+| `CredentialsAccepted` | True | Probe succeeded, credentials valid. | None; healthy. |
+| `CredentialsRejected` | False | Upstream returned 401/403 (auth failed). | Rotate the API key in the Secret referenced by `spec.credentials.secretRef`. |
+| `CredentialsEmpty` | False | `apiKey` is empty. | Check Secret content and `spec.credentials.secretRef.key`. |
+| `CredentialsTooShort` | False | `apiKey` shorter than `--min-api-key-length` (default 8). | Almost certainly a placeholder/mis-paste. Replace with valid key. |
+| `SecretMissing` | False | Secret not found or missing `apiKey` JSON key. | Verify Secret exists at referenced location and contains valid JSON. |
+| `UpstreamTransient` | False | Upstream returned 5xx or probe timed out. | Usually self-healing; ensure SigNoz is healthy and accessible. |
+| `EndpointUnreachable` | False | Cannot reach configured `endpoint` URL. | Verify `endpoint` URL and DNS resolution. |
 
 When `CredentialsValid=False`, the provider:
 
