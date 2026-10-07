@@ -52,6 +52,7 @@ const (
 	errDeleteDashboard = "cannot delete dashboard"
 	errGetDashboard    = "cannot get dashboard"
 	errFindDashboard   = "cannot search for an existing dashboard by name"
+	errAdoptDashboard  = "cannot record the adopted dashboard id"
 )
 
 // Setup adds a controller that reconciles Dashboard managed resources.
@@ -123,13 +124,18 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errGetCreds)
 	}
 
-	return &external{service: c.newServiceFn(*cfg)}, nil
+	return &external{service: c.newServiceFn(*cfg), kube: c.kube}, nil
 }
 
 // An ExternalClient observes, then either creates, updates, or deletes an
 // external resource to ensure it reflects the managed resource's desired state.
 type external struct {
 	service *clients.Client
+	// kube persists the adopted dashboard id. The reconciler only writes the
+	// status subresource once a resource is observed up to date, so an
+	// annotation set during Observe would otherwise be discarded on every
+	// reconcile and the adoption would have to be repeated forever.
+	kube resource.ClientApplicator
 }
 
 func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -175,7 +181,10 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			// Creating instead would 409, because SigNoz rejects on name
 			// collision and reports a freshly minted id in the error, which
 			// makes the conflict look like a different resource each time.
-			adopted, findErr := c.service.FindDashboardV2ByName(ctx, cr.Spec.ForProvider.Title)
+			// SigNoz stores a slug of the title, not the title itself, so the
+			// candidates have to cover both the slug and the raw forms.
+			candidates := clients.DashboardNameCandidates(cr.Spec.ForProvider.Title, cr.GetName())
+			adopted, findErr := c.service.FindDashboardV2ByName(ctx, candidates...)
 			if findErr != nil {
 				// A failure to search is not evidence the dashboard is gone.
 				// Reporting absent here would trigger a create and turn a
@@ -185,14 +194,24 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 			}
 
 			if adopted != nil {
+				logger := log.FromContext(ctx)
+				logger.Info("Adopting existing dashboard by name",
+					"name", cr.GetName(), "title", cr.Spec.ForProvider.Title,
+					"candidates", candidates, "id", adopted.ID)
+
 				if cr.GetAnnotations() == nil {
 					cr.SetAnnotations(make(map[string]string))
 				}
 				cr.GetAnnotations()["crossplane.io/external-name"] = adopted.ID
-				logger := log.FromContext(ctx)
-				logger.Info("Adopted existing dashboard by name",
-					"name", cr.GetName(), "title", cr.Spec.ForProvider.Title,
-					"id", adopted.ID)
+
+				// Persist the id, otherwise the adoption is thrown away: once a
+				// resource is observed up to date the reconciler writes only the
+				// status subresource, never the object, so an annotation set
+				// here would not survive the reconcile.
+				if err := c.kube.Update(ctx, cr); err != nil {
+					clients.RecordUpstreamCondition(ctx, &cr.Status.ConditionedStatus, err, false)
+					return managed.ExternalObservation{}, errors.Wrap(err, errAdoptDashboard)
+				}
 
 				dashboard = adopted
 			} else {

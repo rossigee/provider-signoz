@@ -277,17 +277,29 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 // buildRuleData builds the API payload shared by Create and Update.
 //
 // evaluation/schemaVersion/notificationSettings are only populated for
-// alerts using a v5 multi-level threshold condition - confirmed live by
-// isolating this exact variable against two different alert kinds:
-// http-auth-failures (a real threshold_rule) requires the block and is
-// rejected without it, while high-cpu-usage (a promql_rule, condition has
-// no Thresholds) is rejected *with* it and succeeds without it. RuleType
-// is left hardcoded to "threshold_rule" for every alert regardless of
-// actual kind - also confirmed live: the API tolerates that mismatch as
-// long as the evaluation block is absent, so it is out of scope for this
-// fix (changing it would need to correctly discriminate promql_rule/
-// threshold_rule/anomaly_rule from the condition shape, which only
-// exercises the flat-condition and Thresholds cases seen so far).
+// alerts using a v5 multi-level threshold condition. Confirmed live by
+// isolating each field independently against POST /api/v1/rules with the
+// v5 QueryEnvelope shape:
+//
+//	no evaluation block                              -> accepted
+//	evaluation + schemaVersion + notificationSettings -> 400 "alert rule is not valid"
+//	evaluation alone                                 -> accepted
+//
+// So the block as a whole is not what the API rejects - schemaVersion or
+// notificationSettings is. Note this inverts the guidance that used to sit
+// on clients.RuleEvaluation, which claimed evaluation was required on
+// POST/PUT. It is optional; the full three-field set is what the API
+// refuses. That inverted comment is the reason the 20 PromQL alerts in
+// flux-crossplane-signoz were assumed broken for a while - the manifests
+// were fine and the provider payload was fine, but v0.6.4 was running in
+// the cluster against v0.6.7 manifests.
+//
+// RuleType is left hardcoded to "threshold_rule" for every alert regardless
+// of actual kind - confirmed live: the API tolerates the mismatch (it
+// reclassifies to promql_rule on response), so it is out of scope here.
+// Changing it would need to discriminate promql_rule/threshold_rule/
+// anomaly_rule from the condition shape, which only the flat-condition and
+// Thresholds cases exercise so far.
 func buildRuleData(cr *v1beta1.Alert) *clients.RuleData {
 	ruleData := &clients.RuleData{
 		AlertName:         cr.Spec.ForProvider.AlertName,

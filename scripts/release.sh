@@ -1,46 +1,46 @@
 #!/bin/bash
 set -euo pipefail
 
-# release.sh - Automated release script
-# Usage: ./scripts/release.sh <version>
-# Example: ./scripts/release.sh v0.1.0
+SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname -- "$SCRIPT_DIR")"
 
-VERSION="${1:-}"
+if [[ $# -ne 1 ]] || [[ ! "$1" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    printf 'Usage: %s vX.Y.Z\n' "$0" >&2
+    exit 1
+fi
+VERSION="$1"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+git -C "$ROOT_DIR" fetch origin master
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-PROVIDER_NAME="$(basename "$ROOT_DIR")"
-
-print_status() { echo -e "${BLUE}[INFO]${NC} $1"; }
-print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-
-if [[ -z "$VERSION" ]]; then
-    print_error "Usage: $0 <version>"
-    print_error "Example: $0 v0.1.0"
+WORKTREE_STATUS="$(git -C "$ROOT_DIR" status --porcelain)"
+if [[ -n "$WORKTREE_STATUS" ]]; then
+    printf 'Worktree must be clean.\n' >&2
     exit 1
 fi
 
-if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    print_error "Invalid version format: $VERSION"
-    print_error "Version must be: vX.Y.Z"
+LOCAL_HEAD="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+REMOTE_MASTER="$(git -C "$ROOT_DIR" rev-parse origin/master)"
+if [[ "$LOCAL_HEAD" != "$REMOTE_MASTER" ]]; then
+    printf 'HEAD must match origin/master.\n' >&2
     exit 1
 fi
 
-if [[ -n "$(git status --porcelain)" ]]; then
-    print_error "Working directory has uncommitted changes"
+VERSION_FILE_VERSION="$(<"$ROOT_DIR/VERSION")"
+if [[ "$VERSION_FILE_VERSION" != "$VERSION" ]]; then
+    printf 'VERSION does not match %s.\n' "$VERSION" >&2
     exit 1
 fi
 
-print_status "Releasing $PROVIDER_NAME version $VERSION"
+if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/tags/$VERSION"; then
+    printf 'Local tag already exists: %s\n' "$VERSION" >&2
+    exit 1
+fi
 
-print_status "Building and publishing..."
-PLATFORMS="${PLATFORMS:-linux/amd64}" make publish VERSION="$VERSION"
+REMOTE_TAG="$(git -C "$ROOT_DIR" ls-remote --tags origin "refs/tags/$VERSION")"
+if [[ -n "$REMOTE_TAG" ]]; then
+    printf 'Remote tag already exists: %s\n' "$VERSION" >&2
+    exit 1
+fi
 
-print_success "Released $PROVIDER_NAME $VERSION"
+git -C "$ROOT_DIR" tag --annotate "$VERSION" --message "Release $VERSION" HEAD
+git -C "$ROOT_DIR" push origin "refs/tags/$VERSION"
