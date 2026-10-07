@@ -62,7 +62,7 @@ func TestReconcile_SuccessfulProbe(t *testing.T) {
 		probeGotCalled = true
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{"data": []interface{}{}})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"data": []interface{}{}})
 	}))
 	defer server.Close()
 
@@ -123,7 +123,7 @@ func TestReconcile_SuccessfulProbe(t *testing.T) {
 func TestReconcile_AuthFailure_InvalidKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid API key"})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"error": "invalid API key"})
 	}))
 	defer server.Close()
 
