@@ -7,7 +7,7 @@ Guide to getting started with the SigNoz provider.
 Install the SigNoz provider:
 
 ```bash
-kubectl crossplane install provider ghcr.io/rossigee/provider-signoz:v0.6.4
+kubectl crossplane install provider ghcr.io/rossigee/provider-signoz:v0.6.9
 ```
 
 ## Prerequisites
