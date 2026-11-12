@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.6.10] - 2026-11-12
+
 ### Added
 - `DeleteDashboardV2` API method for proper V2 dashboard deletion
 - Comprehensive ProviderConfig controller tests (70% coverage)
@@ -29,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - API version consistency across dashboard CRUD operations
 
 ### Changed
+- Built with Go 1.27.4 (previously 1.27.3).
 - Dashboard controller updated to use `DeleteDashboardV2` for deletion
 
 ### Test Coverage
