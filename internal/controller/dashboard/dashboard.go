@@ -839,6 +839,13 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 	panels := make(map[string]interface{})
 	var layoutItems []interface{}
 
+	// Honour explicit widget layout when supplied; fall back to the uniform
+	// two-column grid otherwise.
+	layoutByID := make(map[string]v1beta1.Layout, len(layout))
+	for _, l := range layout {
+		layoutByID[l.I] = l
+	}
+
 	for i, w := range widgets {
 		panelID := w.ID
 		if panelID == "" {
@@ -894,11 +901,21 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 
 		panels[panelID] = panel
 
+		x, y, width, height := i%2*6, (i/2)*6, 6, 6
+		if l, ok := layoutByID[panelID]; ok {
+			x, y = l.X, l.Y
+			if l.W > 0 {
+				width = l.W
+			}
+			if l.H > 0 {
+				height = l.H
+			}
+		}
 		layoutItems = append(layoutItems, map[string]interface{}{
-			"x":      i % 2 * 6,
-			"y":      (i / 2) * 6,
-			"width":  6,
-			"height": 6,
+			"x":      x,
+			"y":      y,
+			"width":  width,
+			"height": height,
 			"content": map[string]interface{}{
 				"$ref": "#/spec/panels/" + panelID,
 			},
