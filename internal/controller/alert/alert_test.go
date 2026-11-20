@@ -162,7 +162,7 @@ func TestConvertQueryBuilder_MetricAggregation(t *testing.T) {
 	// This test exercises the v5 builder_query spec for a metric alert:
 	//   metricName=coredns_panics_total, timeAggregation=rate,
 	//   spaceAggregation=sum.
-	// The rules API (POST/PUT /api/v1/rules) expects the v5 QueryEnvelope
+	// The rules API (POST/PUT /api/v2/rules) expects the v5 QueryEnvelope
 	// schema: compositeQuery.queries[] spec carries name/stepInterval/signal/
 	// source/aggregations[] (metricName, temporality, timeAggregation,
 	// spaceAggregation), NOT the legacy v3 builderQueries fields.
@@ -610,7 +610,7 @@ func TestConditionEqual_FilterExpressionRoundTrip(t *testing.T) {
 // SigNoz's rules API rejects outright for a threshold_rule that actually
 // uses condition.thresholds - confirmed live (400 "alert rule is not
 // valid"). This locks in the shape convertThresholds must produce, matched
-// field-for-field against a live rule fetched via GET /api/v1/rules/{id}.
+// field-for-field against a live rule fetched via GET /api/v2/rules/{id}.
 func TestConvertCondition_Thresholds(t *testing.T) {
 	condition := v1beta1.RuleCondition{
 		CompositeQuery: v1beta1.CompositeQuery{

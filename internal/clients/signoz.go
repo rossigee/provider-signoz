@@ -827,7 +827,7 @@ type RuleData struct {
 }
 
 // RuleEvaluation is an OPTIONAL sibling of RuleData.Condition on the rules
-// API (POST/PUT /api/v1/rules) - confirmed live by isolating it against a
+// API (POST/PUT /api/v2/rules) - confirmed live by isolating it against a
 // real promql_rule payload: omitting the whole block is accepted, and
 // sending evaluation on its own is also accepted. GET responses always
 // include this nested form, which is why it is easy to assume it is
@@ -900,7 +900,7 @@ type ListRulesResponse struct {
 
 // CreateRule creates a new alert rule
 func (c *Client) CreateRule(ctx context.Context, rule *RuleData) (*RuleData, error) {
-	resp, err := c.doRequest(ctx, http.MethodPost, "/api/v1/rules", rule)
+	resp, err := c.doRequest(ctx, http.MethodPost, "/api/v2/rules", rule)
 	if err != nil {
 		return nil, err
 	}
@@ -915,7 +915,7 @@ func (c *Client) CreateRule(ctx context.Context, rule *RuleData) (*RuleData, err
 
 // GetRule retrieves a rule by ID
 func (c *Client) GetRule(ctx context.Context, id string) (*RuleData, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/api/v1/rules/%s", id), nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, fmt.Sprintf("/api/v2/rules/%s", id), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -935,7 +935,7 @@ func (c *Client) GetRule(ctx context.Context, id string) (*RuleData, error) {
 // generic payload so the success status is honoured without failing on the
 // string-vs-object type mismatch.
 func (c *Client) UpdateRule(ctx context.Context, id string, rule *RuleData) (*RuleData, error) {
-	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("/api/v1/rules/%s", id), rule)
+	resp, err := c.doRequest(ctx, http.MethodPut, fmt.Sprintf("/api/v2/rules/%s", id), rule)
 	if err != nil {
 		return nil, err
 	}
@@ -953,13 +953,13 @@ func (c *Client) UpdateRule(ctx context.Context, id string, rule *RuleData) (*Ru
 
 // DeleteRule deletes a rule
 func (c *Client) DeleteRule(ctx context.Context, id string) error {
-	_, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("/api/v1/rules/%s", id), nil)
+	_, err := c.doRequest(ctx, http.MethodDelete, fmt.Sprintf("/api/v2/rules/%s", id), nil)
 	return err
 }
 
 // ListRules lists all rules
 func (c *Client) ListRules(ctx context.Context) ([]*RuleData, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/api/v1/rules", nil)
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api/v2/rules", nil)
 	if err != nil {
 		return nil, err
 	}

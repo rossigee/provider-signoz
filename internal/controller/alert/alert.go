@@ -278,7 +278,7 @@ func (c *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 //
 // evaluation/schemaVersion/notificationSettings are only populated for
 // alerts using a v5 multi-level threshold condition. Confirmed live by
-// isolating each field independently against POST /api/v1/rules with the
+// isolating each field independently against POST /api/v2/rules with the
 // v5 QueryEnvelope shape:
 //
 //	no evaluation block                              -> accepted
@@ -615,7 +615,7 @@ func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
 // convertThresholds converts the CRD's Thresholds slice into SigNoz's v5
 // condition.thresholds block (kind "basic", spec as an array of per-level
 // objects), matching the shape confirmed against a live rule fetched via
-// GET /api/v1/rules/{id}.
+// GET /api/v2/rules/{id}.
 func convertThresholds(thresholds []v1beta1.Threshold) map[string]interface{} {
 	specs := make([]interface{}, len(thresholds))
 	for i, t := range thresholds {
@@ -686,7 +686,7 @@ func convertCompositeQuery(query v1beta1.CompositeQuery) map[string]interface{} 
 		"unit":      query.Unit,
 	}
 
-	// The rules API (POST/PUT /api/v1/rules) expects the v5 QueryEnvelope
+	// The rules API (POST/PUT /api/v2/rules) expects the v5 QueryEnvelope
 	// schema: compositeQuery.queries is an array of {type, spec} envelopes,
 	// NOT the legacy query-range v3 builderQueries/promQueries maps.
 	// SigNoz v0.137.1's ruletypes.AlertCompositeQuery.Queries is
@@ -766,7 +766,7 @@ func convertQueryBuilder(builder v1beta1.QueryBuilder) map[string]interface{} {
 
 	// "source" is required on the wire for metrics ("meter"); logs/traces
 	// queries carry no source (confirmed against a live logs-signal rule
-	// fetched via GET /api/v1/rules/{id}, which has source: "").
+	// fetched via GET /api/v2/rules/{id}, which has source: "").
 	source := ""
 	if signal == "metrics" {
 		source = "meter"

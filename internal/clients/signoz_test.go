@@ -232,8 +232,8 @@ func TestClient_CreateRule(t *testing.T) {
 			t.Errorf("Expected POST method, got %s", r.Method)
 		}
 
-		if r.URL.Path != "/api/v1/rules" {
-			t.Errorf("Expected path /api/v1/rules, got %s", r.URL.Path)
+		if r.URL.Path != "/api/v2/rules" {
+			t.Errorf("Expected path /api/v2/rules, got %s", r.URL.Path)
 		}
 
 		response := RuleResponse{
@@ -286,7 +286,7 @@ func TestClient_CreateRule(t *testing.T) {
 }
 
 // TestClient_CreateRule_RequiresEvaluationBlock reproduces a bug found live
-// against http-auth-failures: the rules API (POST/PUT /api/v1/rules)
+// against http-auth-failures: the rules API (POST/PUT /api/v2/rules)
 // rejects any request lacking the nested evaluation/schemaVersion/
 // notificationSettings fields with 400 "alert rule is not valid" - even
 // though the top-level evalWindow/frequency fields are also accepted.
