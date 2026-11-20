@@ -809,8 +809,8 @@ type RuleData struct {
 	RuleType  string `json:"ruleType,omitempty"`
 	// EvalWindow and Frequency are also accepted at top level, but are not
 	// sufficient on their own - see Evaluation.
-	EvalWindow           string                    `json:"evalWindow"`
-	Frequency            string                    `json:"frequency"`
+	EvalWindow           string                    `json:"evalWindow,omitempty"`
+	Frequency            string                    `json:"frequency,omitempty"`
 	Condition            map[string]interface{}    `json:"condition"`
 	Labels               map[string]string         `json:"labels,omitempty"`
 	Annotations          map[string]string         `json:"annotations,omitempty"`
