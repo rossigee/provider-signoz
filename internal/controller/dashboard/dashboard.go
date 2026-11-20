@@ -845,6 +845,31 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 			panelID = fmt.Sprintf("panel-%d", i)
 		}
 
+		// SigNoz v6 dashboards use distinct plugin kinds per visualisation.
+		// The provider previously emitted TimeSeriesPanel for every widget,
+		// which made value/table/list widgets render as misleading line graphs.
+		pluginKind := "signoz/TimeSeriesPanel"
+		pluginSpec := map[string]interface{}{
+			"visualization": map[string]interface{}{
+				"timePreference": "global_time",
+			},
+		}
+		switch strings.ToLower(w.PanelType) {
+		case "value":
+			pluginKind = "signoz/NumberPanel"
+			pluginSpec = map[string]interface{}{}
+		case "list":
+			pluginKind = "signoz/ListPanel"
+			pluginSpec = map[string]interface{}{}
+		case "pie":
+			pluginKind = "signoz/PieChartPanel"
+			pluginSpec = map[string]interface{}{}
+		case "table":
+			// TablePanel rejects PromQL sub-queries in SigNoz 0.146; keep it
+			// as a time series until the provider supports a table query type.
+			pluginKind = "signoz/TimeSeriesPanel"
+		}
+
 		panel := map[string]interface{}{
 			"kind": "Panel",
 			"spec": map[string]interface{}{
@@ -852,12 +877,8 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 					"name": w.Title,
 				},
 				"plugin": map[string]interface{}{
-					"kind": "signoz/TimeSeriesPanel",
-					"spec": map[string]interface{}{
-						"visualization": map[string]interface{}{
-							"timePreference": "global_time",
-						},
-					},
+					"kind": pluginKind,
+					"spec": pluginSpec,
 				},
 				"queries": []interface{}{
 					convertQueryToV2(w.Query),
@@ -865,7 +886,7 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 			},
 		}
 
-		if w.YAxisUnit != nil {
+		if w.YAxisUnit != nil && pluginKind == "signoz/TimeSeriesPanel" {
 			panel["spec"].(map[string]interface{})["plugin"].(map[string]interface{})["spec"].(map[string]interface{})["formatting"] = map[string]interface{}{
 				"unit": *w.YAxisUnit,
 			}
