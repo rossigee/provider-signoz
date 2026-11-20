@@ -188,6 +188,17 @@ func (c *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.ID = alert.ID
 	cr.Status.AtProvider.State = alert.State
 
+	// The v2 API returns evalWindow/frequency only inside the evaluation
+	// block; lift them onto the flat fields so drift comparison works.
+	if alert.Evaluation != nil {
+		if alert.EvalWindow == "" {
+			alert.EvalWindow = alert.Evaluation.Spec.EvalWindow
+		}
+		if alert.Frequency == "" {
+			alert.Frequency = alert.Evaluation.Spec.Frequency
+		}
+	}
+
 	if alert.CreatedAt != "" {
 		if createdAt, err := time.Parse(time.RFC3339, alert.CreatedAt); err == nil {
 			cr.Status.AtProvider.CreatedAt = &metav1.Time{Time: createdAt}
@@ -305,8 +316,6 @@ func buildRuleData(cr *v1beta1.Alert) *clients.RuleData {
 		AlertName:         cr.Spec.ForProvider.AlertName,
 		AlertType:         convertAlertType(cr.Spec.ForProvider.AlertType),
 		RuleType:          "threshold_rule",
-		EvalWindow:        cr.Spec.ForProvider.EvalWindow,
-		Frequency:         cr.Spec.ForProvider.Frequency,
 		Condition:         convertCondition(cr.Spec.ForProvider.Condition),
 		Labels:            cr.Spec.ForProvider.Labels,
 		Annotations:       cr.Spec.ForProvider.Annotations,
@@ -314,17 +323,23 @@ func buildRuleData(cr *v1beta1.Alert) *clients.RuleData {
 		Disabled:          cr.Spec.ForProvider.Disabled,
 		Severity:          cr.Spec.ForProvider.Severity,
 		Version:           "v5",
-	}
-
-	if len(cr.Spec.ForProvider.Condition.Thresholds) > 0 {
-		ruleData.Evaluation = &clients.RuleEvaluation{
+		Evaluation: &clients.RuleEvaluation{
 			Kind: "rolling",
 			Spec: clients.RuleEvaluationSpec{
 				EvalWindow: cr.Spec.ForProvider.EvalWindow,
 				Frequency:  cr.Spec.ForProvider.Frequency,
 			},
-		}
-		ruleData.SchemaVersion = "v2alpha1"
+		},
+		SchemaVersion: "v2alpha1",
+		NotificationSettings: &clients.RuleNotificationSettings{
+			Renotify:  clients.RuleRenotify{Enabled: false, Interval: "30m"},
+			UsePolicy: false,
+		},
+	}
+
+	if len(cr.Spec.ForProvider.Condition.Thresholds) == 0 {
+		// PromQL/composite-query rules still require the evaluation block on
+		// the v2 API; leave notification settings minimal.
 		ruleData.NotificationSettings = &clients.RuleNotificationSettings{
 			Renotify:  clients.RuleRenotify{Enabled: false, Interval: "30m"},
 			UsePolicy: false,

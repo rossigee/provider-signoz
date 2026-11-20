@@ -808,13 +808,13 @@ func TestBuildRuleData_EvaluationOnlyForThresholds(t *testing.T) {
 	}
 
 	rd2 := buildRuleData(withoutThresholds)
-	if rd2.Evaluation != nil {
-		t.Error("expected Evaluation to be nil for a flat-condition alert (no Thresholds)")
+	if rd2.Evaluation == nil {
+		t.Error("expected Evaluation to be set for a flat-condition alert (v2 API requires evalWindow in the evaluation block)")
 	}
-	if rd2.SchemaVersion != "" {
-		t.Error("expected SchemaVersion to be empty for a flat-condition alert (no Thresholds)")
+	if rd2.SchemaVersion == "" {
+		t.Error("expected SchemaVersion to be set for a flat-condition alert")
 	}
-	if rd2.NotificationSettings != nil {
-		t.Error("expected NotificationSettings to be nil for a flat-condition alert (no Thresholds)")
+	if rd2.NotificationSettings == nil {
+		t.Error("expected NotificationSettings to be set for a flat-condition alert")
 	}
 }
