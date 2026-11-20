@@ -320,7 +320,6 @@ func buildRuleData(cr *v1beta1.Alert) *clients.RuleData {
 		Labels:            cr.Spec.ForProvider.Labels,
 		Annotations:       cr.Spec.ForProvider.Annotations,
 		Disabled:          cr.Spec.ForProvider.Disabled,
-		Severity:          cr.Spec.ForProvider.Severity,
 		Version:           "v5",
 		Evaluation: &clients.RuleEvaluation{
 			Kind: "rolling",
