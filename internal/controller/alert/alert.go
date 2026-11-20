@@ -316,7 +316,7 @@ func buildRuleData(cr *v1beta1.Alert) *clients.RuleData {
 		AlertName:         cr.Spec.ForProvider.AlertName,
 		AlertType:         convertAlertType(cr.Spec.ForProvider.AlertType),
 		RuleType:          "threshold_rule",
-		Condition:         convertCondition(cr.Spec.ForProvider.Condition),
+		Condition:         convertCondition(cr.Spec.ForProvider.Condition, cr.Status.AtProvider.ResolvedChannelIDs),
 		Labels:            cr.Spec.ForProvider.Labels,
 		Annotations:       cr.Spec.ForProvider.Annotations,
 		PreferredChannels: cr.Status.AtProvider.ResolvedChannelIDs,
@@ -412,7 +412,7 @@ func isAlertUpToDate(spec v1beta1.AlertParameters, alert *clients.RuleData) bool
 	// what catches a builder_query schema mismatch (e.g. provider vs SigNoz
 	// v5) - if we always claimed "up to date" the user would never see
 	// drift in the form of repeated PUT attempts.
-	desiredCondition := convertCondition(spec.Condition)
+	desiredCondition := convertCondition(spec.Condition, nil)
 	return conditionEqual(desiredCondition, alert.Condition)
 }
 
@@ -483,6 +483,21 @@ func valueEqual(a, b interface{}) bool {
 		}
 		return conditionEqual(am, bm)
 	}
+	// Maps (e.g. condition.thresholds.spec entries).
+	if am, aok := a.(map[string]interface{}); aok {
+		bm, bok := b.(map[string]interface{})
+		if !bok || len(am) != len(bm) {
+			return false
+		}
+		for k, av := range am {
+			bv, ok := bm[k]
+			if !ok || !valueEqual(av, bv) {
+				return false
+			}
+		}
+		return true
+	}
+
 	// Slices.
 	if as, aok := a.([]interface{}); aok {
 		bs, bok := b.([]interface{})
@@ -596,32 +611,44 @@ func convertAlertType(alertType string) string {
 	return alertType
 }
 
-func convertCondition(condition v1beta1.RuleCondition) map[string]interface{} {
+func convertCondition(condition v1beta1.RuleCondition, preferredChannels []string) map[string]interface{} {
 	result := map[string]interface{}{
 		"compositeQuery":    convertCompositeQuery(condition.CompositeQuery),
 		"selectedQueryName": "A",
 	}
 
-	// Multi-level thresholds replace the flat op/target/matchType entirely
-	// on the wire - a rule created with thresholds has no top-level
-	// op/target/matchType keys at all (confirmed against a live v5 rule).
 	if len(condition.Thresholds) > 0 {
 		result["thresholds"] = convertThresholds(condition.Thresholds)
 		return result
 	}
 
-	result["op"] = "1"
-	result["target"] = 0
-	result["matchType"] = "1"
-
+	// SigNoz v0.146.0 rejects flat op/target/matchType keys in condition.
+	// Express a single-level condition as a one-entry thresholds block.
+	channels := make([]interface{}, len(preferredChannels))
+	for i, ch := range preferredChannels {
+		channels[i] = ch
+	}
+	spec := map[string]interface{}{
+		"name":           "warning",
+		"target":         0,
+		"targetUnit":     "",
+		"recoveryTarget": nil,
+		"matchType":      "1",
+		"op":             ">",
+		"channels":       channels,
+	}
 	if condition.CompareOp != "" {
-		result["op"] = condition.CompareOp
+		spec["op"] = condition.CompareOp
 	}
 	if condition.Target != nil {
-		result["target"] = *condition.Target
+		spec["target"] = *condition.Target
 	}
 	if condition.MatchType != nil {
-		result["matchType"] = fmt.Sprintf("%d", *condition.MatchType)
+		spec["matchType"] = fmt.Sprintf("%d", *condition.MatchType)
+	}
+	result["thresholds"] = map[string]interface{}{
+		"kind": "basic",
+		"spec": []interface{}{spec},
 	}
 
 	return result

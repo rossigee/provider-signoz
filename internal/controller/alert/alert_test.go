@@ -45,7 +45,7 @@ func TestIsAlertUpToDate(t *testing.T) {
 		// Mirror the default condition that convertCondition emits for
 		// a zero-value RuleCondition (op="1", target=0, matchType="1",
 		// compositeQuery with builder query A).
-		Condition: convertCondition(spec.Condition),
+		Condition: convertCondition(spec.Condition, nil),
 	}
 
 	if !isAlertUpToDate(spec, alert) {
@@ -126,18 +126,19 @@ func TestConvertCondition(t *testing.T) {
 		MatchType: intPtr(1),
 	}
 
-	result := convertCondition(condition)
+	result := convertCondition(condition, nil)
 
-	if result["op"] != "VALUE" {
-		t.Errorf("Expected op 'VALUE', got %v", result["op"])
+	thresholdSpec := result["thresholds"].(map[string]interface{})["spec"].([]interface{})[0].(map[string]interface{})
+	if thresholdSpec["op"] != "VALUE" {
+		t.Errorf("Expected op 'VALUE', got %v", thresholdSpec["op"])
 	}
 
-	if result["target"] != 1.0 {
-		t.Errorf("Expected target 1.0, got %v", result["target"])
+	if thresholdSpec["target"] != 1.0 {
+		t.Errorf("Expected target 1.0, got %v", thresholdSpec["target"])
 	}
 
-	if result["matchType"] != "1" {
-		t.Errorf("Expected matchType 1, got %v", result["matchType"])
+	if thresholdSpec["matchType"] != "1" {
+		t.Errorf("Expected matchType 1, got %v", thresholdSpec["matchType"])
 	}
 
 	compositeQuery := result["compositeQuery"].(map[string]interface{})
@@ -498,24 +499,26 @@ func TestConvertCondition_OpEmittedAsString(t *testing.T) {
 		MatchType:      intPtr(1),
 	}
 
-	got := convertCondition(cond)
+	got := convertCondition(cond, nil)
+
+	thresholdSpec := got["thresholds"].(map[string]interface{})["spec"].([]interface{})[0].(map[string]interface{})
 
 	// op must be a scalar string, never []interface{}.
-	op, ok := got["op"].(string)
+	op, ok := thresholdSpec["op"].(string)
 	if !ok || op != ">" {
-		t.Fatalf("expected op to be string \">\", got %T(%v)", got["op"], got["op"])
+		t.Fatalf("expected op to be string \">\", got %T(%v)", thresholdSpec["op"], thresholdSpec["op"])
 	}
-	if _, isSlice := got["op"].([]interface{}); isSlice {
+	if _, isSlice := thresholdSpec["op"].([]interface{}); isSlice {
 		t.Fatalf("op must not be emitted as an array (op-as-array drift)")
 	}
 
-	mt, ok := got["matchType"].(string)
+	mt, ok := thresholdSpec["matchType"].(string)
 	if !ok || mt != "1" {
-		t.Fatalf("expected matchType string \"1\", got %T(%v)", got["matchType"], got["matchType"])
+		t.Fatalf("expected matchType string \"1\", got %T(%v)", thresholdSpec["matchType"], thresholdSpec["matchType"])
 	}
 
 	// target must be a numeric scalar, not a slice.
-	switch got["target"].(type) {
+	switch thresholdSpec["target"].(type) {
 	case float64, int, int64:
 	default:
 		t.Fatalf("expected target numeric scalar, got %T(%v)", got["target"], got["target"])
@@ -555,7 +558,7 @@ func TestConditionEqual_FilterExpressionRoundTrip(t *testing.T) {
 		},
 	}
 
-	desired := convertCondition(cond)
+	desired := convertCondition(cond, nil)
 
 	// observed mirrors the live SigNoz v1 GET response for this rule.
 	observed := map[string]interface{}{
@@ -586,9 +589,16 @@ func TestConditionEqual_FilterExpressionRoundTrip(t *testing.T) {
 				},
 			},
 		},
-		"op":                ">",
-		"target":            float64(0),
-		"matchType":         "1",
+		"thresholds": map[string]interface{}{
+			"kind": "basic",
+			"spec": []interface{}{
+				map[string]interface{}{
+					"name": "warning", "target": float64(0), "targetUnit": "",
+					"recoveryTarget": nil, "matchType": "1", "op": ">",
+					"channels": []interface{}{},
+				},
+			},
+		},
 		"selectedQueryName": "A",
 	}
 
@@ -632,7 +642,7 @@ func TestConvertCondition_Thresholds(t *testing.T) {
 		},
 	}
 
-	result := convertCondition(condition)
+	result := convertCondition(condition, nil)
 
 	if _, hasOp := result["op"]; hasOp {
 		t.Error("expected no top-level op key when thresholds are set")
@@ -748,7 +758,7 @@ func TestIsAlertUpToDate_LogAlertTypeTranslation(t *testing.T) {
 		AlertType:  "LOGS_BASED_ALERT",
 		EvalWindow: "5m",
 		Frequency:  "1m",
-		Condition:  convertCondition(spec.Condition),
+		Condition:  convertCondition(spec.Condition, nil),
 	}
 
 	if !isAlertUpToDate(spec, alert) {
