@@ -611,9 +611,15 @@ func convertAlertType(alertType string) string {
 }
 
 func convertCondition(condition v1beta1.RuleCondition, preferredChannels []string) map[string]interface{} {
+	selectedQuery := "A"
+	if len(condition.CompositeQuery.PromQL) > 0 && condition.CompositeQuery.PromQL[0].Name != "" {
+		selectedQuery = condition.CompositeQuery.PromQL[0].Name
+	} else if len(condition.CompositeQuery.ClickHouse) > 0 && condition.CompositeQuery.ClickHouse[0].Name != "" {
+		selectedQuery = condition.CompositeQuery.ClickHouse[0].Name
+	}
 	result := map[string]interface{}{
 		"compositeQuery":    convertCompositeQuery(condition.CompositeQuery),
-		"selectedQueryName": "A",
+		"selectedQueryName": selectedQuery,
 	}
 
 	if len(condition.Thresholds) > 0 {
