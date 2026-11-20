@@ -439,7 +439,74 @@ func isDashboardV2UpToDate(spec v1beta1.DashboardParameters, dashboard *clients.
 		}
 	}
 
+	if !isLayoutUpToDate(spec.Layout, dashboard.Spec.Layouts) {
+		return false
+	}
+
 	return isVariablesUpToDate(spec.Variables, dashboard.Spec.Variables)
+}
+
+// isLayoutUpToDate compares the CRD grid layout with the observed SigNoz
+// layout items. Without this, changing a panel's size or position left
+// Observe() reporting up-to-date and the change was never applied.
+func isLayoutUpToDate(layout []v1beta1.Layout, observedLayouts []interface{}) bool {
+	if len(layout) == 0 {
+		return true // provider falls back to its own uniform grid
+	}
+	if len(observedLayouts) == 0 {
+		return false
+	}
+	observed, ok := observedLayouts[0].(map[string]interface{})
+	if !ok {
+		return false
+	}
+	items, ok := nestedSlice(observed, "spec", "items")
+	if !ok || len(items) != len(layout) {
+		return false
+	}
+
+	byRef := make(map[string]map[string]interface{}, len(items))
+	for _, raw := range items {
+		item, ok := raw.(map[string]interface{})
+		if !ok {
+			return false
+		}
+		content, ok := item["content"].(map[string]interface{})
+		if !ok {
+			return false
+		}
+		ref, ok := content["$ref"].(string)
+		if !ok {
+			return false
+		}
+		byRef[ref] = item
+	}
+
+	for _, l := range layout {
+		item, ok := byRef["#/spec/panels/"+l.I]
+		if !ok {
+			return false
+		}
+		if intFrom(item["x"]) != l.X || intFrom(item["y"]) != l.Y ||
+			intFrom(item["width"]) != l.W || intFrom(item["height"]) != l.H {
+			return false
+		}
+	}
+	return true
+}
+
+// intFrom converts JSON-decoded numbers (float64) or Go ints to int.
+func intFrom(v interface{}) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	default:
+		return -1
+	}
 }
 
 // isVariablesUpToDate compares the desired Variables map against the
@@ -568,6 +635,10 @@ func isPanelUpToDate(w v1beta1.Widget, panel interface{}) bool {
 		return false
 	}
 	if name, _ := displayMap["name"].(string); name != w.Title {
+		return false
+	}
+
+	if observedKind, ok := nestedString(specMap, "plugin", "kind"); !ok || observedKind != panelKindFor(w.PanelType) {
 		return false
 	}
 
@@ -811,6 +882,21 @@ func convertMetricsBuilder(builder v1beta1.MetricsBuilder) map[string]interface{
 	return result
 }
 
+// panelKindFor maps the CRD panelType to the SigNoz v6 plugin kind. Keeping
+// this in one place ensures creation and drift detection cannot disagree.
+func panelKindFor(panelType string) string {
+	switch strings.ToLower(panelType) {
+	case "value":
+		return "signoz/NumberPanel"
+	case "list":
+		return "signoz/ListPanel"
+	case "pie":
+		return "signoz/PieChartPanel"
+	default:
+		return "signoz/TimeSeriesPanel"
+	}
+}
+
 func convertToV2(title, description string, tags []string, widgets []v1beta1.Widget, layout []v1beta1.Layout, variables map[string]v1beta1.Variable) *clients.DashboardV2Data {
 	v2name := strings.ToLower(strings.ReplaceAll(title, " ", "-"))
 	v2 := &clients.DashboardV2Data{
@@ -855,26 +941,16 @@ func convertToV2(title, description string, tags []string, widgets []v1beta1.Wid
 		// SigNoz v6 dashboards use distinct plugin kinds per visualisation.
 		// The provider previously emitted TimeSeriesPanel for every widget,
 		// which made value/table/list widgets render as misleading line graphs.
-		pluginKind := "signoz/TimeSeriesPanel"
+		pluginKind := panelKindFor(w.PanelType)
 		pluginSpec := map[string]interface{}{
 			"visualization": map[string]interface{}{
 				"timePreference": "global_time",
 			},
 		}
-		switch strings.ToLower(w.PanelType) {
-		case "value":
-			pluginKind = "signoz/NumberPanel"
+		if pluginKind != "signoz/TimeSeriesPanel" {
+			// Non-time-series panels reject the TimeSeriesPanel visualisation
+			// fields; SigNoz fills in its own defaults from an empty spec.
 			pluginSpec = map[string]interface{}{}
-		case "list":
-			pluginKind = "signoz/ListPanel"
-			pluginSpec = map[string]interface{}{}
-		case "pie":
-			pluginKind = "signoz/PieChartPanel"
-			pluginSpec = map[string]interface{}{}
-		case "table":
-			// TablePanel rejects PromQL sub-queries in SigNoz 0.146; keep it
-			// as a time series until the provider supports a table query type.
-			pluginKind = "signoz/TimeSeriesPanel"
 		}
 
 		panel := map[string]interface{}{

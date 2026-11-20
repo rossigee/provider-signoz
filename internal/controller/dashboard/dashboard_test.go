@@ -423,3 +423,102 @@ func TestIsDashboardV2UpToDate_DetectsVariableDrift(t *testing.T) {
 func stringPtr(s string) *string {
 	return &s
 }
+
+// TestIsDashboardV2UpToDate_DetectsPanelKindDrift verifies that changing a
+// widget's panelType (e.g. graph -> value) is detected, so Update() is called
+// instead of silently leaving a TimeSeriesPanel in SigNoz.
+func TestIsDashboardV2UpToDate_DetectsPanelKindDrift(t *testing.T) {
+	w := v1beta1.Widget{
+		ID:        "sli",
+		Title:     "SLI",
+		PanelType: "value",
+		Query: v1beta1.Query{
+			QueryType: "1",
+			PromQL:    []v1beta1.PromQuery{{Query: "up", Name: stringPtr("SLI")}},
+		},
+	}
+	spec := v1beta1.DashboardParameters{Title: "SLO", Widgets: []v1beta1.Widget{w}}
+
+	matching := &clients.DashboardV2Data{
+		Spec: clients.DashboardV2Spec{
+			Display: &clients.DashboardV2Display{Name: "SLO"},
+			Panels: map[string]interface{}{
+				"sli": panelFixture("SLI", "", "promql", "up", "", "SLI", false),
+			},
+		},
+	}
+	// Fix the fixture's kind to the one panelType=value requires.
+	setPanelKind(t, matching.Spec.Panels["sli"], "signoz/NumberPanel")
+	if !isDashboardV2UpToDate(spec, matching) {
+		t.Error("expected up to date when observed panel kind matches panelType")
+	}
+
+	drifted := &clients.DashboardV2Data{
+		Spec: clients.DashboardV2Spec{
+			Display: &clients.DashboardV2Display{Name: "SLO"},
+			Panels: map[string]interface{}{
+				"sli": panelFixture("SLI", "", "promql", "up", "", "SLI", false),
+			},
+		},
+	}
+	if isDashboardV2UpToDate(spec, drifted) {
+		t.Error("expected drift when observed panel is TimeSeriesPanel but spec asks for value")
+	}
+}
+
+func setPanelKind(t *testing.T, panel interface{}, kind string) {
+	t.Helper()
+	spec := panel.(map[string]interface{})["spec"].(map[string]interface{})
+	spec["plugin"].(map[string]interface{})["kind"] = kind
+}
+
+// TestIsDashboardV2UpToDate_DetectsLayoutDrift verifies that resizing or
+// repositioning a widget triggers Update().
+func TestIsDashboardV2UpToDate_DetectsLayoutDrift(t *testing.T) {
+	w := v1beta1.Widget{
+		ID:        "sli",
+		Title:     "SLI",
+		PanelType: "graph",
+		Query: v1beta1.Query{
+			QueryType: "1",
+			PromQL:    []v1beta1.PromQuery{{Query: "up", Name: stringPtr("SLI")}},
+		},
+	}
+	spec := v1beta1.DashboardParameters{
+		Title:   "SLO",
+		Widgets: []v1beta1.Widget{w},
+		Layout:  []v1beta1.Layout{{I: "sli", X: 0, Y: 0, W: 4, H: 4}},
+	}
+	dashboard := &clients.DashboardV2Data{
+		Spec: clients.DashboardV2Spec{
+			Display: &clients.DashboardV2Display{Name: "SLO"},
+			Panels: map[string]interface{}{
+				"sli": panelFixture("SLI", "", "promql", "up", "", "SLI", false),
+			},
+			Layouts: []interface{}{layoutFixture("sli", 0, 0, 4, 4)},
+		},
+	}
+	if !isDashboardV2UpToDate(spec, dashboard) {
+		t.Error("expected up to date when layout matches")
+	}
+
+	dashboard.Spec.Layouts = []interface{}{layoutFixture("sli", 0, 0, 6, 6)}
+	if isDashboardV2UpToDate(spec, dashboard) {
+		t.Error("expected drift when widget width/height changed")
+	}
+}
+
+func layoutFixture(id string, x, y, w, h int) map[string]interface{} {
+	return map[string]interface{}{
+		"kind": "Grid",
+		"spec": map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{
+					"x": float64(x), "y": float64(y),
+					"width": float64(w), "height": float64(h),
+					"content": map[string]interface{}{"$ref": "#/spec/panels/" + id},
+				},
+			},
+		},
+	}
+}
