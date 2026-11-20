@@ -319,7 +319,6 @@ func buildRuleData(cr *v1beta1.Alert) *clients.RuleData {
 		Condition:         convertCondition(cr.Spec.ForProvider.Condition, cr.Status.AtProvider.ResolvedChannelIDs),
 		Labels:            cr.Spec.ForProvider.Labels,
 		Annotations:       cr.Spec.ForProvider.Annotations,
-		PreferredChannels: cr.Status.AtProvider.ResolvedChannelIDs,
 		Disabled:          cr.Spec.ForProvider.Disabled,
 		Severity:          cr.Spec.ForProvider.Severity,
 		Version:           "v5",
